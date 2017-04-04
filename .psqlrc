@@ -28,5 +28,5 @@
 -- display a nice welcome message :)
 \echo ''
 \echo 'Welcome to PostgreSQL Ryan! \n'
-\echo '        ＼(´◓Д◔`)／\n'
+\echo '        ヽ(。_°)ノ\n'
 \echo 'Oh boi whadup!\n'
