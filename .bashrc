@@ -31,6 +31,11 @@ alias ll="ls -l"
 
 alias fixapache="sudo systemctl restart httpd"
 
+# now i can run "athena thd" and connect to the thd db on the athena host
+athena() {
+    psql -U postgres -h athena -d $1
+}
+
 # make multitail behave like the taile script did
 mtaile() {
     multitail --mergeall /var/log/httpd/$1*-error_log
