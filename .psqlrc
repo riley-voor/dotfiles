@@ -1,13 +1,15 @@
+-- dont show output for setting all these things
+\set QUIET 1
+
 -- set expanded display to auto-detect
 \x auto
 
--- (borrowed from Harrison's psqlrc) (yes i intend to give it back :P)
 -- setup prompt with colors
-\set PROMPT1 '%[%033[1;36m%][%[%033[0;36m%]%m%[%033[1;36m%]]:%[%033[0;36m%]%>%[%033[0;36m%] %n%[%033[1;36m%]@%[%033[0;36m%]%/%[%033[1;36m%] %R%#%x %[%033[0m%]'
-\set PROMPT2 '%[%033[1;36m%][%[%033[0;36m%]%m%[%033[1;36m%]]:%[%033[0;36m%]%>%[%033[0;36m%] %n%[%033[1;36m%]@%[%033[0;36m%]%/%[%033[1;36m%] %R%#%x %[%033[0m%]'
+\set PROMPT1 '%[%033[1;36m%][%[%033[0;36m%]%m%[%033[1;36m%]]:%[%033[0;36m%]%>%[%033[0;36m%] %n%[%033[1;36m%]@%[%033[0;36m%]%/%[%033[1;36m%]%R%#%x %[%033[0m%]'
+\set PROMPT2 '%[%033[1;36m%][%[%033[0;36m%]%m%[%033[1;36m%]]:%[%033[0;36m%]%>%[%033[0;36m%] %n%[%033[1;36m%]@%[%033[0;36m%]%/%[%033[1;36m%]%R%#%x %[%033[0m%]'
 
 -- null values are empty by default, so print '(null)' instead
-\pset null '(null)'
+\pset null '[null]'
 
 -- Custom Commands:
 
@@ -19,3 +21,12 @@
 
 -- turn on verbose mode for better errors while debugging
 \set VERBOSITY verbose
+
+-- do show output from here on
+\set QUIET 0
+
+-- display a nice welcome message :)
+\echo ''
+\echo 'Welcome to PostgreSQL Ryan! \n'
+\echo '        ＼(´◓Д◔`)／\n'
+\echo 'Oh boi whadup!\n'
