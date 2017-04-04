@@ -1,0 +1,21 @@
+-- set expanded display to auto-detect
+\x auto
+
+-- (borrowed from Harrison's psqlrc) (yes i intend to give it back :P)
+-- setup prompt with colors
+\set PROMPT1 '%[%033[0;31m%][%[%033[1;37m%]%m%[%033[0;31m%]]:%[%033[1;31m%]%>%[%033[0m%] %n@%[%033[1;36m%]%/%[%033[0m%]%R%#%x '
+\set PROMPT2 '%[%033[0;31m%][%[%033[1;37m%]%m%[%033[0;31m%]]:%[%033[1;31m%]%>%[%033[0m%] %n@%[%033[1;36m%]%/%[%033[0m%]%R%#%x '
+
+-- null values are empty by default, so print '(null)' instead
+\pset null '(null)'
+
+-- Custom Commands:
+
+-- :clear -- clears the screen
+\set clear '\\! clear'
+
+-- show the timing of every query
+\timing
+
+-- turn on verbose mode for better errors while debugging
+\set VERBOSITY verbose

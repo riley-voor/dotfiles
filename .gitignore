@@ -1,0 +1,39 @@
+# ignore everything
+*
+
+# except these files
+!.gitignore
+!.vimrc
+!.bashrc
+!.bash_profile
+!.psqlrc
+!.gitconfig
+!.README.md
+
+# and dont ignore these directories
+# I have to specify each level of files
+# deep that i want so I just did a ton so
+# that way i probably won't miss anything
+!.vim/
+!.vim/*
+!.vim/*/*
+!.vim/*/*/*
+!.vim/*/*/*/*
+!.vim/*/*/*/*/*
+!.vim/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
