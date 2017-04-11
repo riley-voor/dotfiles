@@ -30,6 +30,9 @@ alias la="ls -a"
 alias ll="ls -l"
 
 alias fixapache="sudo systemctl restart httpd"
+alias killscheduler="sudo systemctl stop \"*scheduler*\""
+
+alias e="exit"
 
 # now i can run "athena thd" and connect to the thd db on the athena host
 athena() {
