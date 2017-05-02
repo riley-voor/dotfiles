@@ -15,10 +15,11 @@ call vundle#begin()
 Plugin 'VundleVim/Vundle.vim'
 
 " my plugins
-Plugin 'junegunn/vim-easy-align' " Easy-Align
-Plugin 'ervandew/supertab'       " SuperTab
-Plugin 'scrooloose/syntastic'    " Syntastic
-Plugin 'tpope/vim-fugitive'      " Fugitive
+Plugin 'junegunn/vim-easy-align'  " Easy-Align
+Plugin 'ervandew/supertab'        " SuperTab
+Plugin 'scrooloose/syntastic'     " Syntastic
+Plugin 'tpope/vim-fugitive'       " Fugitive
+Plugin 'arcticicestudio/nord-vim' " Nord color scheme
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -49,7 +50,7 @@ map <F5> :tabn<CR>
 nmap ; :
 
 " select colorscheme
-colorscheme ron
+colorscheme nord
 
 " copy and paste setup " not currently working
 "set clipboard+=unnamed  " use the clipboards of vim and win
