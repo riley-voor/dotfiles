@@ -52,6 +52,11 @@ nmap ; :
 " select colorscheme
 colorscheme nord
 
+" make comments italic " doesn't work on centos (ie my devbox at Neadwerx)
+"set t_ZH=^[[3m
+"set t_ZR=^[[23m
+"highlight Comment cterm=italic
+
 " copy and paste setup " not currently working
 "set clipboard+=unnamed  " use the clipboards of vim and win
 "set paste               " Paste from a windows or from vim

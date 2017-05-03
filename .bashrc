@@ -12,6 +12,9 @@ fi
 
 export PGHOST="10.0.0.59"
 
+# allow vim to recognise the kind of terminal i'm using
+#export TERM="xterm-256color"
+
 # puts files listed as trailing arguments into tabs rather than windows
 alias vim="vim -p"
 
