@@ -18,6 +18,11 @@ export PGHOST="10.0.0.59"
 # puts files listed as trailing arguments into tabs rather than windows
 alias vim="vim -p"
 
+# vim shortcut alias that opens all the files that 'git status' lists as modified
+vimmodified() {
+    vim -p $(git status --porcelain | awk '{print $2}') "$@"
+}
+
 # quality of life shortenings
 alias ..="cd .."
 alias ..2="cd ../.."
@@ -46,3 +51,8 @@ athena() {
 mtaile() {
     multitail --mergeall /var/log/httpd/$1*-error_log
 }
+
+# enable globstar for easy recursive directory commands
+# globstar is the ** thing that includes directories and subdirectories
+# recursively in a glob
+shopt -s globstar
