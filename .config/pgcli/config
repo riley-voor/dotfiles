@@ -116,7 +116,7 @@ on_error = STOP
 row_limit = 0
 
 # Skip intro on startup and goodbye on exit
-less_chatty = False
+less_chatty = True
 
 # Postgres prompt
 # \t - Current date and time
