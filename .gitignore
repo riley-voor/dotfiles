@@ -8,6 +8,7 @@
 !.bash_profile
 !.psqlrc
 !.gitconfig
+!.config/pgcli/config
 !.README.md
 
 # and dont ignore these directories
