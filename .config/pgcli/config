@@ -84,7 +84,7 @@ search_path_filter = False
 # pager = less -SRXF
 
 # Timing of sql statements and table rendering.
-timing = True
+timing = False
 
 # Show/hide the informational toolbar with function keymap at the footer.
 show_bottom_toolbar = False
