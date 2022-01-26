@@ -1,0 +1,3480 @@
+#!/bin/bash
+
+# Current Version
+_VERSION="1.9.4"
+
+# local development only
+if [[ -f "$(dirname $(readlink -f $0))/.development-g-script" ]] ; then
+    _VERSION="dev"
+fi
+
+#### SETUP ####
+# g script requires extended globbing
+shopt -s extglob
+
+#### GLOBALS ####
+_JIRA_BRANCH_FIELD="customfield_10400"
+_JIRA_ROOT_CAUSE_FIELD="customfield_11502"
+_JIRA_ROOT_CAUSE_COMMIT_FIELD="customfield_12700"
+_JIRA_ROOT_CAUSE_DESCRIPTION_FIELD="customfield_11503"
+_JIRA_TESTING_PROCEDURE_FIELD="customfield_12500"
+_JIRA_SUPPORT_RESOLVE_ISSUE_TRANSITION="131"
+_JIRA_SUPPORT_SELF_ALLOCATE_TRANSITION="41"
+_JIRA_ISSUE_CLASS_FIELD="customfield_12800"
+_JIRA_REVIEWER_FIELD="customfield_10200"
+_JIRA_ISSUE_CLASS_BUG_PRODUCTION="13314"
+_JIRA_ISSUE_CLASS_BUG_STAGING="13315"
+_JIRA_ISSUE_CLASS_BUG_DEV="13316"
+_JIRA_EPIC_LINK_FIELD="customfield_10008"
+_JIRA_EPIC_LINK_FIELD_IN_SEARCH="cf%5B10008%5D"
+_JIRA_ROLES_FIELD="customfield_11400"
+_JIRA_AFFECTED_CUSTOMERS_FIELD="customfield_10403"
+_JIRA_AFFECTED_CUSTOMERS_ALL="11601"
+_JIRA_ISSUE_SOURCE_FIELD="customfield_12600"
+_JIRA_ISSUE_SOURCE_NEADWERX="11702"
+_JIRA_PRIORITY_MED_ID="3"
+_JIRA_ROLES_MW_ID="11202"
+_JIRA_ROLES_DB_ID="10701"
+_MERGE_IGNORE_FILE="AUTO_MERGE_IGNORE" # shared with autogit:/lib.sh#git_merge()
+
+declare -a _G_ADMINS=(
+    kirk
+    brent
+)
+
+#### UTIL FUNCTIONS ####
+
+# echos out with color, e.g.
+#   color_echo red "My Error"
+#   color_echo yellow "My Warning"
+#   color_echo green "My Success"
+function color_echo () {
+    case $1 in
+     red)
+          color=31
+          ;;
+     green)
+          color=32
+          ;;
+     yellow)
+          color=33
+          ;;
+     *)
+          color=$1
+          ;;
+    esac
+
+    # remove $1
+    shift
+
+    echo -e "\033[1;${color}m$@\033[0m"
+}
+
+# Matches an element against an array of bash globs
+# return status is 0 if it matched, 1 if not, e.g.
+#   declare -a my_array=(
+#       '*test/*'
+#       '*common/barcode/*'
+#       '*common/dompdf/*'
+#       '*common/simplesaml/*'
+#   )
+#
+#   matches_glob_element "$element" "${my_array[@]}"
+#   if [[ $? == 0 ]] ; then
+#       echo "Element matched"
+#   fi
+matches_glob_element () {
+    for element in "${@:2}" ; do
+        if [[ $1 == $element ]] ; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# begin reading from the keyboard
+function turn_on_keyboard () {
+    # save stdin to fd 6
+    exec 6<&1
+
+    # set stdin to /dev/tty
+    exec </dev/tty
+
+    # because we're about to read something...I guess
+    flush_stdin
+}
+
+# stop reading from the keyboard
+function turn_off_keyboard () {
+    # restore stdin from fd 6 and close fd 6
+    exec 1<&6 6>&-
+}
+
+# [see: https://superuser.com/questions/276531/clear-stdin-before-reading]
+function flush_stdin() {
+    while read -e -t 0.1 ; do : ; done
+}
+
+# asks the user for input in the form of a [y/n] question
+# the result is stored in the variable $ANSWER
+function ask () {
+    question="$1"
+
+    # manually run color echo without a newline
+    echo -e -n "\033[1;33m$question [y/n]: \033[0m"
+
+    turn_on_keyboard
+    read -n 1 ANSWER
+    turn_off_keyboard
+
+    # add the missing newline
+    echo ""
+
+    # loop until the user responds with a y or n
+    while [[ $ANSWER != y ]] && [[ $ANSWER != n ]] ; do
+        # manually run color echo without a newline
+        echo -e -n "\033[1;33m[y/n]: \033[0m"
+
+        turn_on_keyboard
+        read -n 1 ANSWER
+        turn_off_keyboard
+
+        # add the missing newline
+        echo ""
+    done
+}
+
+# asks the user for input in the form of a [y/n] question
+# the result is stored in the variable $ANSWER
+function ask_with_timeout () {
+    timeout="$1"
+    default="$2"
+    question="$3"
+
+    # manually run color echo without a newline
+    color_echo yellow "$question [y/n]"
+    echo -e -n "\033[1;33mAssuming \"$default\" in $timeout secs: \033[0m"
+
+    turn_on_keyboard
+    read -t $timeout -n 1 ANSWER
+    read_exit_code="$?"
+    turn_off_keyboard
+
+    # add the missing newline
+    echo ""
+
+    if [[ $read_exit_code != 0 ]] ; then
+        # timeout occurred
+        ANSWER="$default"
+    else
+        # loop until the user responds with a y or n
+        while [[ $ANSWER != y ]] && [[ $ANSWER != n ]] ; do
+            # manually run color echo without a newline
+            echo -e -n "\033[1;33m[y/n]: \033[0m"
+
+            turn_on_keyboard
+            read -n 1 ANSWER
+            turn_off_keyboard
+
+            # add the missing newline
+            echo ""
+        done
+    fi
+}
+
+# asks the user for input in the form of a question
+# the result is stored in the variable $ANSWER
+function q () {
+    question="$1"
+    variable="$2"
+
+    # manually run color echo without a newline
+    echo -e -n "\033[1;33m$question \033[0m"
+
+    turn_on_keyboard
+    eval "read $variable"
+    turn_off_keyboard
+}
+
+# asks the user to select an option from a list or hash,
+# then save the option/value selected into the SELECTION variable
+function option_select () {
+    question=$1
+    shift
+
+    temp=$(declare -p "$1")
+    if [[ `declare -p temp` =~ "declare -a" ]] ; then
+        eval "declare -a options=${temp#*=}"
+        keys=("${options[@]}")
+    else
+        eval "declare -A options=${temp#*=}"
+        keys=("${!options[@]}")
+    fi
+
+    # create a hash of key=value even if options isn't a hash
+    if [[ `declare -p options` =~ "declare -A" ]] ; then
+        temp=$(declare -p options)
+        eval "declare -A hash_options=${temp#*=}"
+    else
+        declare -A hash_options
+        for option in "${options[@]}" ; do
+            hash_options["$option"]="$option"
+        done
+    fi
+
+    # request selection back from the user
+    color_echo yellow "$question"
+    num=0
+    for key in "${keys[@]}" ; do
+        num=$(( $num + 1 ))
+        echo -e "  $num. $key"
+    done
+
+    # manually run color echo without a newline
+    echo -e -n "\033[1;33mSelect: \033[0m"
+
+    turn_on_keyboard
+    read -n 1 ANSWER
+    read_exit_code="$?"
+    turn_off_keyboard
+
+    # add the missing newline
+    echo ""
+
+    # loop until the user responds with a valid selection
+    while [[ -z $ANSWER ]] || (( $ANSWER < 1 )) || (( $ANSWER > $num )) ; do
+        color_echo red "Please select a valid option."
+
+        # manually run color echo without a newline
+        echo -e -n "\033[1;33mSelect: \033[0m"
+
+        turn_on_keyboard
+        read -n 1 ANSWER
+        turn_off_keyboard
+
+        # add the missing newline
+        echo ""
+    done
+
+    selected_key="${keys[$(($ANSWER - 1))]}"
+    SELECTION="${hash_options[$selected_key]}"
+}
+
+# Called by git for interactive rebase from g_dedup_rebase
+function g_internal_automated_rebase () {
+    epic="$1"
+    file="$2"
+
+    mv "$file" "$file.g"
+
+    cat "$file.g" | while read line ; do
+        if echo "$line" | grep -q '^pick ' ; then
+            commit_hash="$(echo "$line" | awk '{print $2}')"
+            issue_id="$(echo "$line" | awk '{print $3}')"
+
+            # Make sure this is the full hash
+            commit_hash="$(_mygit rev-parse "$commit_hash")"
+
+#            if grep -q "^$commit_hash$" "/tmp/dups.$epic" ; then
+#                echo "Skipping duplicate hash: $line"
+#            else
+                if grep -q "^$issue_id$" "/tmp/issues.$epic" ; then
+                    echo "$line" >> "$file"
+                else
+                    true
+                    echo "Skipping issue not in epic: $line"
+                fi
+#            fi
+        else
+            echo "$line" >> "$file"
+        fi
+    done
+}
+
+function g_manual_rebase () {
+    issue="$1"
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # ensure the issue and version branches exist
+    if ! _mygit branch -r | grep -q -P "origin\/$issue" ; then
+        color_echo red "Missing issue branch 'origin/$issue' on remote!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # switch to the issue branch
+    _git checkout "$issue"
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    # rerere-train before rebasing to learn from our conflicts
+    color_echo yellow "g rerere-train"
+    g_rerere_train || return 1
+
+    # get the original HEAD
+    ORIG_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    _git rebase -i --onto "origin/master" "origin/master" "$issue"
+
+    # get the new HEAD
+    NEW_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    # if the current merge status is not empty, or the HEADs changed, then we
+    # must have rebased something, so remind the user to git push --force
+    merge_status=`_git_merge_status`
+    if [[ -n "$merge_status" ]] || [[ $ORIG_HEAD != $NEW_HEAD ]] ; then
+        color_echo red "You have just rebased a potentially public branch!"
+        color_echo red "Remember to resolve any conflicts, then"
+        color_echo red "Remember to \`g push --force\` if your branch has diverged!"
+    fi
+
+    return 0
+}
+
+function g_dedup_rebase () {
+    issue="$1"
+
+    color_echo red "Run: export GIT_EDITOR=true"
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # ensure the issue and version branches exist
+    if ! _mygit branch -r | grep -q -P "origin\/$issue" ; then
+        color_echo red "Missing issue branch 'origin/$issue' on remote!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # switch to the issue branch
+    _git checkout "$issue"
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    _get_issues_in_epic "$issue"
+
+#    _find_duplicate_commits "$issue"
+
+    # rerere-train before rebasing to learn from our conflicts
+    color_echo yellow "g rerere-train"
+    g_rerere_train || return 1
+
+    # get the original HEAD
+    ORIG_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    export GIT_SEQUENCE_EDITOR="g internal-automated-rebase $issue"
+    _git rebase -i --onto "origin/master" "origin/master" "$issue"
+
+    # get the new HEAD
+    NEW_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    # if the current merge status is not empty, or the HEADs changed, then we
+    # must have rebased something, so remind the user to git push --force
+    merge_status=`_git_merge_status`
+    if [[ -n "$merge_status" ]] || [[ $ORIG_HEAD != $NEW_HEAD ]] ; then
+        color_echo red "You have just rebased a potentially public branch!"
+        color_echo red "Remember to resolve any conflicts, then"
+        color_echo red "Remember to \`g push --force\` if your branch has diverged!"
+    fi
+
+    return 0
+}
+
+function _find_duplicate_commits () {
+    identifier="$1"
+
+    if [ -e "/tmp/dups.$identifier-done" ] ; then
+        echo "Using last calculated duplicates"
+        return 0;
+    fi
+
+    rm -f "/tmp/dups.$identifier"
+
+    echo "Finding duplicate commits..."
+
+    # First, get all commits "in this branch"
+    commit1=$(_mygit rev-list --simplify-by-decoration -2 HEAD | tail -1)
+    commit2=$(_mygit rev-list --simplify-by-decoration -2 HEAD | head -1)
+
+    # Output format: Commit then summary
+    _mygit log --decorate --no-merges --pretty=oneline $commit1..$commit2 | while read line ; do
+        commit=$(echo "$line" | sed 's/ .*$//')
+        summary=$(echo "$line" | sed 's/^[^ ]* //')
+        _mygit log --format="%H %s" | grep "$summary" | grep -v "$commit" | sed 's/ .*$//' | while read dupcommit ; do
+            commitmd5=$(_mygit show "$commit" | sed -En '/^(Author|Date):/p' | md5sum | awk '{print $1}')
+            dupmd5=$(_mygit show "$dupcommit" | sed -En '/^(Author|Date):/p' | md5sum | awk '{print $1}')
+
+            if [ "$commitmd5" == "$dupmd5" ] ; then
+                echo "   $commit"
+                echo "$commit" >> "/tmp/dups.$identifier"
+            fi
+        done
+    done
+
+    touch "/tmp/dups.$identifier-done" 
+
+    echo
+
+    return 0
+}
+
+function _get_account_id () {
+    user="$1"
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    response=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$password "$api/user/bulk/migration?username=$user"`
+
+    if [[ -z "$response" ]] ; then
+        echo "Failed to curl JIRA"
+        return 1
+    fi
+
+    echo $response | jq '.[0].accountId' | cut -d'"' -f2 | head -1
+}
+
+function _get_issues_in_epic () {
+    epic="$1"
+
+    echo "Getting issues in epic..."
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    startAt=0
+
+    echo "$epic" > "/tmp/issues.$epic"
+
+    while true ; do
+
+        response=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$password "$api/search?jql=$_JIRA_EPIC_LINK_FIELD_IN_SEARCH=$epic&maxResults=100&startAt=$startAt"`
+
+        if [[ -z "$response" ]] ; then
+            echo "Failed to curl JIRA"
+            return 1
+        fi
+
+        jira_error=`echo $response | jq '.errorMessages[0]' -r`
+
+        if [[ $jira_error != "null" ]] ; then
+            echo $jira_error
+            return 1
+        fi
+
+        value=`echo $response | jq '.issues[] | .key' -r`
+
+        found_count=0
+
+        for i in $value ; do
+            found_count=$[$found_count+1]
+            echo "   $i"
+            echo "$i" >> "/tmp/issues.$epic"
+        done
+
+        if [ $found_count -eq 0 ] ; then
+            break
+        fi
+
+        startAt=$[$startAt+100]
+
+    done
+
+    echo
+
+    return 0
+}
+
+# echos back the field for the given issue, or
+# echos the error message with a return code of 1
+function _get_jira_value () {
+    issue="$1"
+    field="$2"
+    jq_path="$3"
+    value_name="${4:-$field}"
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    response=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$password "$api/issue/$issue?fields=$field"`
+
+    if [[ -z "$response" ]] ; then
+        echo "Failed to curl JIRA"
+        return 1
+    fi
+
+    jira_error=`echo $response | jq '.errorMessages[0]' -r`
+
+    if [[ $jira_error != "null" ]] ; then
+        echo $jira_error
+        return 1
+    fi
+
+    value=`echo $response | jq "$jq_path" -r`
+
+    if [[ $value == "null" ]] ; then
+        echo "Failed to find $value_name!"
+        return 1
+    fi
+
+    echo $value
+    return 0
+}
+
+# echos back valid json for jira fields given a fields hash name
+function _create_json_for_jira_fields () {
+    fields_hash_name="$1"
+
+    # turn fields_hash_name into a local var named fields
+    if [[ -n $fields_hash_name ]] ; then
+        temp=$(declare -p "$fields_hash_name")
+        eval "declare -A fields=${temp#*=}"
+    else
+        fields=""
+    fi
+
+    json=""
+
+    # add fields if there are some
+    if [[ -n "${fields[@]}" ]] ; then
+        json+='"fields": { '
+
+        # add each field
+        for field_name in "${!fields[@]}" ; do
+            field_id=`echo "${fields[$field_name]}" | cut -d'|' -f1`
+            field_value=`echo "${fields[$field_name]}" | cut -d'|' -f2-`
+
+            if [[ "$field_id" == "$field_value" ]] ; then
+                if [[ "$field_value" == \{* ]] || [[ "$field_value" == \[* ]] ; then
+                    # literal object or array value
+                    json+="\"$field_name\": $field_value,"
+                else
+                    # string value, just set the key: value
+                    json+="\"$field_name\": \"$field_value\","
+                fi
+            else
+                json+="\"$field_name\": { \"$field_id\": \"$field_value\" },"
+            fi
+        done
+
+        # remove the trailing comma
+        json="${json::-1}"
+
+        # close the fields object
+        json+="}"
+    fi
+
+    echo "$json"
+    return 0
+}
+
+# echos the error message with a return code of 1
+function _set_jira_value () {
+    issue="$1"
+    fields_hash_name="$2"
+
+    fields_json=`_create_json_for_jira_fields $fields_hash_name`
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    response=`curl -q -s -X PUT -H "Content-Type: application/json" -u $username:$password "$api/issue/$issue" \
+                             -d "{ $fields_json }"`
+
+    if [[ $? != 0 ]] ; then
+        echo "Failed to curl JIRA: $response"
+        return 1
+    fi
+
+    # no response means success, otherwise there are errors we need to parse out
+    if [[ -z "$response" ]] ; then
+        return 0
+    fi
+
+    jira_errormessage=`echo $response | jq '.errorMessages[0]' -r`
+
+    if [[ $jira_errormessage != "null" ]] ; then
+        echo $jira_errormessage
+        return 1
+    fi
+
+    if [[ `echo $response | jq '.errors'` != "null" ]] ; then
+        jira_error=`echo $response | jq '[.errors[]][0]' -r`
+
+        if [[ -n "$jira_error" ]] ; then
+            echo "$jira_error"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# transitions the issue or
+# echos the error message with a return code of 1
+#
+# declare -A fields_hash=(
+#   [jira_field_name]="field_id_name|field_value"
+#   [assignee]="name|harrison"
+#   [issuestatus]="id|5"
+#   [customfield_String]="This is my value with no pipes"
+# )
+function _transition_jira_issue () {
+    issue="$1"
+    transition_id="$2"
+    fields_hash_name="$3"
+    comment="$4"
+
+    # turn fields_hash_name into a local var named fields
+    if [[ -n $fields_hash_name ]] ; then
+        temp=$(declare -p "$fields_hash_name")
+        eval "declare -A fields=${temp#*=}"
+    else
+        fields=""
+    fi
+
+    # create the POST body based on the variables
+    json="{ \"transition\": { \"id\": \"$transition_id\" }"
+
+    # add fields if there are some
+    if [[ -n "${fields[@]}" ]] ; then
+        fields_json=`_create_json_for_jira_fields $fields_hash_name`
+        json+=",$fields_json"
+    fi
+
+    # add the comment if there is one
+    if [[ -n "$comment" ]] ; then
+        json+=", \"update\": { \"comment\" : [ { \"add\": { \"body\": \"$comment\" } } ] }"
+    fi
+
+    # close the json object
+    json+=" }"
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    response=`curl -q -s -X POST -H "Content-Type: application/json" -u $username:$password "$api/issue/$issue/transitions" -d "$json"`
+
+    if [[ $? != 0 ]] ; then
+        echo "Failed to curl JIRA: $response"
+        return 1
+    fi
+
+    # no response means success, otherwise there are errors we need to parse out
+    if [[ -z "$response" ]] ; then
+        return 0
+    fi
+
+    jira_errormessage=`echo $response | jq '.errorMessages[0]' -r`
+
+    if [[ $jira_errormessage != "null" ]] ; then
+        echo $jira_errormessage
+        return 1
+    fi
+
+    if [[ `echo $response | jq '.errors'` != "null" ]] ; then
+        jira_error=`echo $response | jq '[.errors[]][0]' -r`
+
+        if [[ -n "$jira_error" ]] ; then
+            echo "$jira_error"
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+# creates the issue and echos out the key created or
+# echos the error message with a return code of 1
+#
+# declare -A fields_hash=(
+#   [jira_field_name]="field_id_name|field_value"
+#   [assignee]="name|harrison"
+#   [issuestatus]="id|5"
+#   [customfield_String]="This is my value with no pipes"
+# )
+function _create_jira_issue () {
+    fields_hash_name="$1"
+
+    # turn fields_hash_name into a local var named fields
+    if [[ -n $fields_hash_name ]] ; then
+        temp=$(declare -p "$fields_hash_name")
+        eval "declare -A fields=${temp#*=}"
+    else
+        fields=""
+    fi
+
+    # create the POST body based on the variables
+    json="{ "
+
+    # add fields if there are some
+    if [[ -n "${fields[@]}" ]] ; then
+        fields_json=`_create_json_for_jira_fields $fields_hash_name`
+        json+="$fields_json"
+    fi
+
+    # close the json object
+    json+=" }"
+
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    response=`curl -q -s -X POST -H "Content-Type: application/json" -u $username:$password "$api/issue" -d "$json"`
+
+    if [[ $? != 0 ]] ; then
+        echo "Failed to curl JIRA: $response"
+        return 1
+    fi
+
+    jira_errormessage=`echo $response | jq '.errorMessages[0]' -r`
+
+    if [[ $jira_errormessage != "null" ]] ; then
+        echo $jira_errormessage
+        return 1
+    fi
+
+    if [[ `echo $response | jq '.errors'` != "null" ]] ; then
+        jira_error=`echo $response | jq '[.errors[]][0]' -r`
+
+        if [[ -n "$jira_error" ]] ; then
+            echo "$jira_error"
+            return 1
+        fi
+    fi
+
+    # echo the created issue's key
+    echo $response | jq -r '.key'
+    return 0
+}
+
+# echo back the current repo name
+function _get_repo_name () {
+    repo_name=`basename $(_mygit remote show -n origin | grep Push | cut -d: -f2-) .git`
+    echo $repo_name
+    return 0
+}
+
+# echo back the next major version of the given version
+function get_next_version_major () {
+    version="$1"
+
+    major=`echo "$version" | cut -d'.' -f1 | tr -d 'v'`
+
+    next_major=$(( $major + 1 ))
+
+    echo "v$next_major.01"
+    return 0
+}
+
+# echo back the next minor version of the given version
+function get_next_version_minor () {
+    version="$1"
+
+    major=`echo "$version" | cut -d'.' -f1 | tr -d 'v'`
+    minor=`echo "$version" | cut -d'.' -f2 | tr -d 'HF'`
+
+    next_minor=`printf '%02d' $(( 10#$minor + 1 ))`
+
+    echo "v$major.$next_minor"
+    return 0
+}
+
+# pop the first item off the given arrayname into the given varname
+function array_pop () {
+    local arrayname=${1:?Array name required} array val varname=${2:-var}
+    eval "array=( \"\${$arrayname[@]}\" )"
+    if [ ${#array[@]} -lt 1 ]
+    then
+        eval "$varname="
+        return 1
+    fi
+
+    eval "$varname=\${array[0]}"
+    unset array[0]
+    eval "$arrayname=( \"\${array[@]}\" )"
+    return 0
+}
+
+#### HELPER GIT FUNCTIONS ####
+
+# run the set of arguments as a git command
+function _git () {
+    # re-build the passed in command string with double quotes and such
+    command_string=""
+    regex_whitespace="[[:space:]]"
+    for arg in "$@" ; do
+        if [[ $arg =~ $regex_whitespace ]] ; then
+            arg=\"$arg\"
+        fi
+
+        command_string+="$arg "
+    done
+
+    color_echo yellow "git" "$command_string"
+    _mygit "$@"
+    return $?
+}
+
+function _mygit () {
+    if [ -x /usr/bin/original-git ] ; then
+        /usr/bin/original-git "$@"
+        return $?
+    else
+        git "$@"
+        return $?
+    fi
+}
+
+# exits the g script unless we're in a git repo
+function exit_unless_git () {
+    _mygit rev-parse HEAD >/dev/null 2>&1 || {
+        color_echo red "Not in a git repo!"
+        exit 1
+    }
+
+    return 0
+}
+
+# echo the current branch name
+function _get_branch () {
+    branch=`_mygit rev-parse --abbrev-ref HEAD 2>/dev/null`
+
+    if [ "$branch" = "HEAD" ]; then
+        # check if we are in a rebase
+        head_name_file="$(_mygit rev-parse --git-dir)/rebase-merge/head-name"
+        if [[ -f "$head_name_file" ]] ; then
+            branch=`cut -f3- -d/ $head_name_file`
+        else
+            branch="DETACHED HEAD"
+        fi
+    fi
+
+    echo $branch
+    return 0
+}
+
+# based on the current branch's name, return the name of the remote branch
+# that the current branch should be sync'd with
+function _get_sync_branch () {
+    branch=${1:-$(_get_branch)}
+
+    if [[ $branch =~ ^bug_ ]] ; then
+        # figure out the bug's version branch
+        version=`echo $branch | cut -f2 -d"_"`
+        echo "$version"
+    elif [[ $branch == "master" ]] || [[ $branch =~ ^v ]] ; then
+        # no sync branch for master or version branches
+        echo ""
+    else
+        # default develop branch to sync from
+        echo "master"
+    fi
+
+    return 0
+}
+
+# return the path to the current git directory
+# from oh-my-zsh git-fast plugin
+function _gitdir ()
+{
+    if [ -z "${1-}" ]; then
+        if [ -n "${__git_dir-}" ]; then
+            echo "$__git_dir"
+        elif [ -n "${GIT_DIR-}" ]; then
+            test -d "${GIT_DIR-}" || return 1
+            echo "$GIT_DIR"
+        elif [ -d .git ]; then
+            echo .git
+        else
+            _mygit rev-parse --git-dir 2>/dev/null
+        fi
+    elif [ -d "$1/.git" ]; then
+        echo "$1/.git"
+    else
+        echo "$1"
+    fi
+}
+
+# get the current merge/rebase/bisect/etc... status for the current git repo
+# from oh-my-zsh git-fast plugin
+function _git_merge_status() {
+    g="$(_gitdir)"
+    r=""
+
+    if [ -n "$g" ]; then
+        if [ -f "$g/rebase-merge/interactive" ]; then
+            r="REBASE-i"
+        elif [ -d "$g/rebase-merge" ]; then
+            r="REBASE-m"
+        else
+            if [ -d "$g/rebase-apply" ]; then
+                if [ -f "$g/rebase-apply/rebasing" ]; then
+                    r="REBASE"
+                elif [ -f "$g/rebase-apply/applying" ]; then
+                    r="AM"
+                else
+                    r="AM/REBASE"
+                fi
+            elif [ -f "$g/MERGE_HEAD" ]; then
+                r="MERGING"
+            elif [ -f "$g/CHERRY_PICK_HEAD" ]; then
+                r="CHERRY-PICKING"
+            elif [ -f "$g/BISECT_LOG" ]; then
+                r="BISECTING"
+            fi
+        fi
+    fi
+    echo "$r"
+}
+
+# returns 0 if git has uncommitted changes,
+# otherwise 1
+function _git_has_uncommitted_changes () {
+    changes_count=`_mygit status --porcelain 2>/dev/null| egrep "^(M| M)" | wc -l`
+
+    if [[ $changes_count -gt 0 ]] ; then
+        return 0
+    else
+        return 1
+    fi
+
+    # unreachable
+}
+
+# returns 0 if the git working tree and index is clean and safe to work on for
+# operations like merges, updates, rebasing, checkout branching, etc...,
+# otherwise 1
+function _git_is_clean_safe () {
+    if ! _git_has_uncommitted_changes && [[ -z `_git_merge_status` ]] ; then
+        return 0
+    else
+        return 1
+    fi
+
+    # unreachable
+}
+
+# returns 1 if the current branch should not have the merge_branch merged into it
+# operations like merges, updates, rebasing, checkout branching, etc...,
+# otherwise 0
+function _git_check_merge_branch () {
+    merge_branch="$1"
+
+    # take off the first "origin/" part if it exists
+    if [[ $merge_branch == origin/* ]] ; then
+        merge_branch=`echo $merge_branch | cut -d'/' -f2-`
+    fi
+
+    if [[ -f $_MERGE_IGNORE_FILE ]] && grep -q -P "^(?:origin\/)?$merge_branch$" $_MERGE_IGNORE_FILE ; then
+        return 1
+    else
+        return 0
+    fi
+
+    # unreachable
+}
+
+# checks the current branch's sync status with its sync branch
+# and recommends syncing
+function check_sync_status () {
+    # return early if not in a git repo
+    _mygit rev-parse HEAD >/dev/null 2>&1 || {
+        return 1
+    }
+
+    # skip if not safe
+    _git_is_clean_safe || return 1
+
+    current_branch=`_get_branch`
+
+    # get the sync branch to check
+    sync_branch=`_get_sync_branch $current_branch`
+    [[ -z "$sync_branch" ]] && return 1
+
+    # ensure our sync branch exists on the remote
+    is_remote_branch_deleted $sync_branch && {
+        # warn about a deleted sync branch
+        color_echo yellow "Your current sync branch '$sync_branch' has been deleted on the remote!"
+        color_echo yellow "Maybe your issue should be moved to a new version?"
+        return 1
+    }
+
+    # ensure our local branch exists on the remote
+    is_remote_branch_deleted $current_branch && return 1
+
+    # check to ensure that the current branch is up-to-date with upstream
+    commits_to_pull=`_mygit rev-list @{u}...HEAD --count --left-right | awk '{print $1}'`
+    if [[ $commits_to_pull -gt 0 ]] ; then
+        # we're behind, don't offer sync
+        return 1
+    fi
+
+    if is_sync_behind $sync_branch ; then
+        echo ""
+        color_echo green "Note: Your branch is $behind_count commits behind origin/$sync_branch."
+        color_echo green "      It's a good idea to sync often while developing to avoid conflicts!"
+
+        ask_with_timeout "5" "n" "Would you like to \`g sync\` now?"
+
+        if [[ $ANSWER == "y" ]] ; then
+            g_sync
+        fi
+    fi
+
+    return 0
+}
+
+# returns 0 and echos a message if the current git working tree is not clean/safe
+# otherwise 1
+function skip_if_not_clean_safe () {
+    _git_is_clean_safe || {
+        color_echo red "Git working tree must be in a clean state before continuing."
+        color_echo yellow "This means no outstanding conflicts and no uncommitted changes."
+        echo "Hint: use \`g commit\` or \`g stash\` to clean up your working tree first."
+        return 0
+    }
+
+    return 1
+}
+
+# returns 0 and echos a message if the current git branch has been deleted on the remote
+# otherwise 1
+function skip_if_on_deleted_remote_branch () {
+    is_remote_branch_deleted `_get_branch` && {
+        color_echo red "The current branch you are on has been deleted on the remote."
+        color_echo yellow "You should switch branches, delete this branch, or panic."
+        echo "Hint: use \`g prune\` to clean out your local branches."
+        return 0
+    }
+
+    return 1
+}
+
+# returns 0 and echos a message if the current git branch has been deleted on the remote
+# otherwise 1
+function skip_if_need_to_push () {
+    need_to_push && {
+        color_echo red "You have un-pushed changes!"
+        color_echo yellow "You should push your un-committed changes before continuing."
+        echo "Hint: use \`g commit\` and \`g push\`."
+        return 0
+    }
+
+    return 1
+}
+
+# returns 0 and echos a message if the current branch should not merge the merge_branch
+# otherwise 1
+function skip_if_should_not_merge () {
+    merge_branch="$1"
+
+    _git_check_merge_branch $merge_branch || {
+        color_echo red "Your current branch is not allowed to merge '$merge_branch' into it!"
+        color_echo yellow "This means somebody has added an entry to your local '$_MERGE_IGNORE_FILE' file."
+        echo "Hint: Contact Kirk/Brent for more information about this restriction."
+        return 0
+    }
+
+    return 1
+}
+
+# returns 0 and echos a message if the current git author (via git config) is not the assignee of the given issue
+# otherwise 1
+function skip_if_not_assignee_to_issue () {
+    # JIRA no longer allows access to the assignee.name field so for now we have to skip this
+    # check because there is no easy workaround
+    # https://developer.atlassian.com/cloud/jira/platform/deprecation-notice-user-privacy-api-migration-guide/
+    return 1
+
+    git_user=`_mygit config --get user.email | cut -f1 -d'@'`
+
+    # if the current git user is one of the g admins, then
+    # always allow them to override the assignee with warning
+    matches_glob_element "$git_user" "${_G_ADMINS[@]}"
+    if [[ $? == 0 ]] ; then
+        color_echo red "User is an admin, overriding assignee check..."
+        return 1
+    fi
+
+    # else, check the git user against the assignee of the issue given
+    issue="$1"
+    issue_assignee=`_get_jira_value "$issue" "assignee" ".fields.assignee.name"`
+
+    if [[ $issue_assignee != $git_user ]] ; then
+        color_echo red "Only the owner of this branch can run this command!"
+        color_echo yellow "The current assignee of $issue is $issue_assignee@merchlogix.com"
+        echo "Hint: Request the assignee of $issue to run this command instead, or"
+        echo "      change yourself to the assignee in JIRA (https://neadwerx.atlassian.net/browse/$issue)"
+        return 0
+    fi
+
+    return 1
+}
+
+# returns 0 if the current branch is behind its sync branch,
+# otherwise 1
+function is_sync_behind () {
+    sync_branch="${1:-$(_get_sync_branch $(_get_branch))}"
+    branch="${2:-HEAD}"
+
+    # no sync branch means we can't be behind
+    [[ -z "$sync_branch" ]] && return 1
+
+    behind_count=`_mygit rev-list --left-right --count origin/$sync_branch...$branch | awk '{print $1}'`
+    [[ $behind_count -gt 0 ]] && return 0
+
+    return 1
+}
+
+# returns 0 if there are un-pushed changes on the current branch
+# otherwise 1
+function need_to_push () {
+    # be up-to-date
+    git_fetch
+
+    branch=`_get_branch`
+    ahead_count=`_mygit rev-list --left-right --count origin/$branch...HEAD | awk '{print $2}'`
+
+    if [[ $ahead_count -gt 0 ]] ; then
+        return 0
+    else
+        return 1
+    fi
+
+    # unreachable
+}
+
+# memoized function to only run git fetch --prune 1 time per g script execution
+_has_git_fetch_run=false
+function git_fetch () {
+    if [[ $1 == "force" ]] || [[ $_has_git_fetch_run == false ]] ; then
+        _git fetch --prune
+        _has_git_fetch_run=true
+    fi
+
+    return 0
+}
+
+# return whether the current HEAD matches the upstream copy or not
+function is_head_match_upstream () {
+    # be up-to-date
+    git_fetch
+
+    commits_to_pull=`_mygit rev-list @{u}...HEAD --count --left-right | awk '{print $1}'`
+    if [[ $commits_to_pull == 0 ]] ; then
+        return 0
+    else
+        return 1
+    fi
+
+    # unreachable
+}
+
+# return whether the current branch has been deleted on the remote
+function is_remote_branch_deleted () {
+    branch="$1"
+    if ! _mygit branch -r | grep -q -P "origin/$branch" ; then
+        return 0
+    else
+        return 1
+    fi
+
+    # unreachable
+}
+
+#### G COMMANDS ####
+
+# clone from the neadwerx bitbucket account as default
+function g_clone_bb () {
+    repo="$1"
+    shift
+
+    _git clone "git@bitbucket.org:neadwerx/$repo" "$@"
+    return $?
+}
+
+# git pull --rebase
+function g_pull () {
+    # be up-to-date
+    git_fetch
+
+    skip_if_on_deleted_remote_branch && return 1
+
+    _git rebase --preserve-merges
+    return $?
+}
+
+# perform a regular git merge, but add the --no-ff flag (always),
+# and ensure that the source branch is always using origin/branch
+function g_merge () {
+    # be up-to-date
+    git_fetch
+
+    skip_if_on_deleted_remote_branch && return 1
+
+    declare -a args
+    args+=( "--no-ff" )
+
+    # regex to match a flag argument
+    regex_flag="^-"
+
+    for arg in "$@" ; do
+        # arg is a flag, add it on to the command
+        if [[ $arg =~ $regex_flag ]] ; then
+            args+=( "$arg" )
+        else
+            # arg is a commit, check if it's a remote tracking branch
+            if _mygit branch -r | grep -q "origin/$arg" ; then
+                # make sure we add "origin/branch"
+                merge_branch="origin/$arg"
+                args+=( "$merge_branch" )
+            elif _mygit branch -r | grep -q "$arg" ; then
+                merge_branch="$arg"
+                args+=( "$merge_branch" )
+            else
+                # just add the commit or whatever to the args
+                args+=( "$arg" )
+            fi
+        fi
+    done
+
+    skip_if_should_not_merge $merge_branch && return 1
+
+    _git merge "${args[@]}"
+    retcode="$?" # save for later
+
+    # warn about doing a raw merge
+    echo ""
+    color_echo yellow "Warning: You have just performed a git merge! This should not be needed"
+    color_echo yellow "         for any part of our git workflow. If you are unsure about what"
+    color_echo yellow "         you're doing, please see kirk@merchlogix.com!"
+    echo ""
+    echo "Hint: If you wish to undo this merge, run \`g reset --hard HEAD@{1}\`"
+
+    return $retcode
+}
+
+# Combination of:
+#   - fetch
+#   - stash
+#   - pull
+#   - pop
+function g_update () {
+    branch=`_get_branch`
+
+    # be up-to-date
+    git_fetch
+
+    skip_if_on_deleted_remote_branch && return 1
+
+    # check if we even need to do anything
+    if [[ `_mygit rev-parse HEAD` == `_mygit rev-parse @{u}` ]] ; then
+        echo "Already up-to-date."
+        return 0
+    fi
+
+    # skip for abnormal merge statuses
+    merge_status=`_git_merge_status`
+    [[ -z "$merge_status" ]] || {
+        color_echo red "Skipping g_update due to merge status: $merge_status"
+        return 1
+    }
+
+    # check the stash for previously saved changes for this branch's update
+    _mygit stash list | grep -q -P "g_update $branch" && {
+        color_echo yellow "Stashed changes found for branch!"
+        echo "You already have some changes stashed by g_update"
+        echo "please drop, pop, or apply these changes before running g update."
+        _git stash list
+        return 1
+    }
+
+    # stash changes
+    stash_msg="g_update $branch"
+    _git stash save --include-untracked "$stash_msg"
+
+    # pull changes
+    retval=0
+    _git pull --rebase || {
+        has_conflicts=true
+        color_echo red "Pull Failed with conflicts!"
+        echo ""
+        color_echo yellow "Please resolve these conflicts using the rebase commands described by git status."
+        echo ""
+        _git status
+        retval=1
+    }
+
+    if _mygit stash list | grep -q -P "$stash_msg" ; then
+        if [[ $has_conflicts == true ]] ; then
+            echo ""
+            color_echo green "Note: Remember to unstash your saved changes with \`g stash pop\` after resolving the conflicts."
+        else
+            # unstash
+            stash_name=`_mygit stash list | grep -P "$stash_msg" | awk '{print $1}' | tr -d ':\n'`
+            _git stash pop --index "$stash_name"
+        fi
+    fi
+
+    return $retval
+}
+
+# merges the upstream sync branch with the current branch
+function g_sync () {
+    current_branch=`_get_branch`
+
+    # ensure we're not on master or a version branch
+    if [[ $current_branch == "master" ]] || [[ $current_branch =~ ^v ]] ; then
+        color_echo red "Cannot sync into master or version branches!"
+        return 1
+    fi
+
+    # be up-to-date
+    git_fetch
+
+    skip_if_on_deleted_remote_branch && return 1
+    skip_if_not_clean_safe && return 1
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    sync_branch=`_get_sync_branch`
+
+    skip_if_should_not_merge $sync_branch && return 1
+
+    if is_remote_branch_deleted $sync_branch ; then
+        # warn about a deleted sync branch
+        color_echo yellow "Your current sync branch '$sync_branch' has been deleted on the remote!"
+        color_echo yellow "Maybe your issue should be moved to a new version?"
+        return 1
+    elif is_sync_behind $sync_branch ; then
+        _git merge --no-edit --no-ff -m "Sync origin/$sync_branch into $current_branch" "origin/$sync_branch"
+        return $?
+    else
+        color_echo green "Already up-to-date."
+        return 0
+    fi
+
+    # unreachable
+}
+
+# update all remote references and clean out stale or old branches
+function g_prune () {
+    auto_prune="$1"
+    shift
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # be up-to-date
+    git_fetch
+
+    branches_to_delete=`_mygit branch -r | awk '{print "\\\\[" $1 "[^]]*\\\\]"}' | grep -v -E -f /dev/fd/0 <(_mygit branch -vv | grep -P "\[origin\/[^]]*\]" | cut -c3-) | awk '{print $1}'`
+
+    if [[ -n "$branches_to_delete" ]] ; then
+        color_echo red "Local branches to be deleted!"
+
+        for branch in ${branches_to_delete[@]} ; do
+            echo -e "\t$branch"
+        done
+
+        if [[ $auto_prune == true ]] || [[ $auto_prune == auto ]] ; then
+            ANSWER="y"
+        else
+            ask "Would you like to prune these branches?"
+        fi
+
+        if [[ $ANSWER == "y" ]] ; then
+            # switch branches
+            _git checkout master
+
+            # delete branches
+            _git branch -D ${branches_to_delete[@]}
+            return $?
+        else
+            return 1 # skipping
+        fi
+    else
+        echo "Nothing to prune."
+
+        return 0
+    fi
+
+    # unreachable
+}
+
+# echos out the status between the given branch (or current branch) and its upstream
+function g_branch_status () {
+    branch=${1:-$(_get_branch)}
+
+    if [[ $branch == "all" ]] ; then
+        color_echo green "Branches:"
+
+        # report on local branches
+        _mygit for-each-ref --format="%(refname:short) %(upstream:short)" refs/heads | \
+        while read local remote ; do
+            if [[ -z "$remote" ]] ; then
+                # print local only branch
+                echo -e "\t$local (local only): N/A"
+            elif ! _mygit branch -r | grep -q -P "origin/$local" ; then
+                # remote branch has been deleted
+                echo -e "\t$(color_echo red "$local (deleted): Need to prune")"
+            else
+                # get the left-right for the upstream branch
+                left_right_upstream=`_mygit rev-list --left-right --count ${local}...${remote}`
+                ahead=`echo $left_right_upstream | awk '{print $1}'`
+                behind=`echo $left_right_upstream | awk '{print $2}'`
+
+                # color the branch status
+                branch_status=`g_branch_status $local | tr -d '\n'`
+
+                # only need a sync if we're behind the sync point, and
+                # not behind the upstream (then we need a pull, first so sync state is unknown)
+                sync_branch=`_get_sync_branch $local`
+                sync_status="" # clear it out each loop
+
+                # check if the sync branch still exists
+                if is_remote_branch_deleted $sync_branch ; then
+                    sync_status="($(color_echo red "$sync_branch Deleted"))"
+                elif is_sync_behind "$sync_branch" "$local" && [[ $behind -eq 0 ]] ; then
+                    # need sync
+                    sync_status="($(color_echo yellow "Sync Needed"))"
+                fi
+
+                # print the branch information
+                echo -e "\t$local ($ahead|$behind): $branch_status $sync_status"
+            fi
+        done
+    else
+        UPSTREAM="origin/$branch"
+
+        if ! _mygit branch -r | grep -q -P "$UPSTREAM" ; then
+            color_echo red "Deleted"
+            return 1
+        fi
+
+        LOCAL=$(_mygit rev-parse $branch)
+        REMOTE=$(_mygit rev-parse "$UPSTREAM")
+        BASE=$(_mygit merge-base $branch "$UPSTREAM")
+
+        if [ $LOCAL = $REMOTE ]; then
+            echo "Up-to-date"
+        elif [ $LOCAL = $BASE ]; then
+            color_echo red "Need to pull"
+        elif [ $REMOTE = $BASE ]; then
+            color_echo green "Need to push"
+        else
+            color_echo yellow "Diverged"
+        fi
+    fi
+
+    return 0
+}
+
+# echos out the stash status information
+function g_stash_status () {
+    stash_items=`_mygit stash list`
+
+    # nothing is stashed!
+    if [[ -z "$stash_items" ]] ; then
+        color_echo yellow "Nothing is stashed"
+        return 1
+    fi
+
+    color_echo green "Stash:"
+
+    while read line ; do
+        echo -e "\t$line"
+    done <<< "$stash_items"
+
+    return 0
+}
+
+# fetch new changes, stash all changes, prune, checkout master, report on branch and stash status
+function g_fresh () {
+    # be up-to-date
+    git_fetch
+
+    # stash everything
+    _git stash save --keep-index --include-untracked "g_fresh on $(_get_branch) at `date`"
+
+    # prune (auto-prune)
+    g_prune "true"
+
+    # checkout master
+    _git checkout "master"
+
+    # update master
+    g_pull
+
+    # print all branch status information
+    g_branch_status "all"
+
+    # print stash status
+    g_stash_status
+
+    return 0
+}
+
+# query JIRA for the given issue's branch, then checkout that branch if it exists
+function g_xo () {
+    issue="$1"
+    shift
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # get the jira branch for the issue
+    jira_branch=`_get_jira_value $issue $_JIRA_BRANCH_FIELD ".fields.$_JIRA_BRANCH_FIELD" "branch"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to get branch for issue $issue: $jira_branch"
+        return 1
+    fi
+
+    # check for a missing branch
+    if [[ -z "$jira_branch" ]] ; then
+        color_echo red "Empty branch field on JIRA issue $issue!"
+        return 1
+    fi
+
+    # be up-to-date before checking for remote branches
+    git_fetch
+
+    # if the branch doesn't exist
+    if ! _mygit branch -r | grep -q -P "origin/$jira_branch" ; then
+        # get the issue type
+        issue_type=`_get_jira_value $issue "issuetype" ".fields.issuetype.name"`
+        if [[ $? != 0 ]] ; then
+            color_echo red "Failed to get issuetype for issue $issue: $issue_type"
+            return 1
+        fi
+
+        color_echo red "The JIRA issue's branch does not yet exist!"
+
+        # set case insensitive glob for the time being
+        shopt -s nocaseglob
+        if [[ $issue_type == "Bug" ]] || [[ $issue_type == "Hotfix" ]] ; then
+            color_echo yellow "Maybe you want to run \`g co-bug $issue\` instead?"
+            return 1
+        else # all other issues are "features" in our workflows
+            color_echo yellow "Maybe you want to run \`g co-feature $issue\` instead?"
+            return 1
+        fi
+    fi
+
+    # the branch exists on the remote, check it out
+    _git checkout "$jira_branch"
+
+    return 0
+}
+
+# branch a new feature from master, if there isn't already a branch to checkout
+function g_co_feature () {
+    issue="$1"
+    shift
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # get the jira branch and summary for the issue
+    # If it's a DVO ticket, check to make sure it exists
+    jira_summary=`_get_jira_value $issue "summary" ".fields.summary" "summary"`
+    jira_branch=`_get_jira_value $issue $_JIRA_BRANCH_FIELD ".fields.$_JIRA_BRANCH_FIELD" "branch"`
+    if [[ $? != 0 ]] && [[ ! "$issue" =~ "DVO" ]] ; then
+        color_echo red "Failed co feature for issue $issue: $jira_branch"
+        return 1
+    elif [[ "$jira_summary" =~ "Issue does not exist or you do not have permission to see it." ]] ; then
+        color_echo red "Failed co feature for issue $issue: ticket does not exist"
+        return 1
+    fi
+
+    echo "$jira_branch" | grep -q '^bug_' && {
+        color_echo red "Branch for $issue looks like a bug branch: $jira_branch"
+        echo "Try using 'g co-bug' instead."
+        return 1
+    }
+
+    #If DVO ticket, set branch name to ticket/issue name
+    if [[ "$issue" =~ "DVO" ]] ; then
+        jira_branch="$issue"
+    fi
+
+    # check for a missing branch
+    if [[ -z "$jira_branch" ]] ; then
+        color_echo red "Empty branch field on JIRA issue $issue!"
+        color_echo yellow "Fix this before beginning to work on a new feature."
+        echo "Hint: https://neadwerx.atlassian.net/browse/$issue"
+        return 1
+    fi
+
+    # be up-to-date before checking for remote branches
+    git_fetch
+
+    if _mygit branch -r | grep -q -P "origin/$jira_branch" ; then
+        color_echo red "Feature branch already exists on the remote, checking out instead!"
+        _git checkout "$jira_branch"
+    elif _mygit branch | grep -q -P "$jira_branch" ; then
+        color_echo red "Feature branch already exists locally, checking out, then pushing to remote instead!"
+        _git checkout "$jira_branch"
+        _git push -u "origin" "$jira_branch"
+    else
+        # create the new feature branch
+        _git checkout -b "$jira_branch" "origin/master"
+        _git push -u "origin" "$jira_branch"
+    fi
+
+    return 0
+}
+
+# create a new Bug in JIRA, then
+# transition it using Self-Allocate, then
+# assign the issue to the current user, then
+# g co-bug the created issue
+function g_new_bug () {
+
+    # assume the first argument is either a version/epic_branch or summary
+
+    # if the first argument is a branch in git, then it is either a version branch, epic branch, or somebody is cheating
+    # the summary should be everything else
+    if [[ -z "$1" ]] ; then
+        # we'll need to request this information
+        branch_version=""
+        summary=""
+    elif _mygit branch -r | grep -q -P "origin/$1" ; then
+        branch_version="$1"
+        shift
+        summary="$@"
+    else
+        branch_version=""
+        summary="$@"
+    fi
+
+    # request the branch/version
+    while [[ -z "$branch_version" ]] ; do
+        q "Which Version or Epic does this bug affect?" branch_version
+    done
+
+    # request the summary
+    while [[ -z "$summary" ]] ; do
+        q "Summary:" summary
+    done
+
+    # check args
+    if ! _mygit branch -r | grep -q -P "origin/$branch_version" ; then
+        color_echo red "Invalid branch/version given!"
+        color_echo yellow "You cannot report a bug for code that doesn't exist!"
+        return 1
+    fi
+
+    # check if summary looks like a JIRA ticket
+    if echo "$summary" | grep -q -P "^XERP-\d+" ; then
+        color_echo red "Your new-bug summary looks suspiciously like a JIRA ticket, did you mean to run \`g co $summary\` instead?"
+        summary=""
+
+        # re-prompt for the summary
+        while [[ -z "$summary" ]] ; do
+            q "New Summary:" summary
+        done
+    fi
+
+    # set these variables while we figure out which arguments were passed in
+    epic_branch=""
+    fix_version=""
+    issue_class=""
+
+    # jira rest credentials
+    username=`get_credentials jira | jq '.username' -r`
+    password=`get_credentials jira | jq '.password' -r`
+    api=`get_credentials jira | jq '.api' -r`
+
+    if ! echo "$branch_version" | grep -q -P "^v\d+.\d+" ; then
+        # must be an Epic, check it on JIRA
+        issuetype=`_get_jira_value "$branch_version" "issuetype" ".fields.issuetype.name"`
+
+        if [[ $? != 0 ]] ; then
+            color_echo red "Invalid Epic '$branch_version' given: $issuetype"
+            return 1
+        elif [[ "$issuetype" != "Epic" ]] ; then
+            color_echo red "Invalid Issue '$branch_version', expected issue type Epic, found issue type '$issuetype'"
+            return 1
+        fi
+
+        epic_branch="$branch_version"
+        issue_class="$_JIRA_ISSUE_CLASS_BUG_DEV"
+    else
+        # must be a fixVersion, check it on JIRA
+        response=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$password "$api/project/XERP/versions"`
+
+        if [[ $? != 0 ]] || [[ -z "$response" ]] ; then
+            color_echo red "Failed to curl JIRA while getting project versions!"
+            return 1
+        fi
+
+        # attempt to select only the specified version by name
+        version_object=`echo $response | jq -e ".[] | {id,name,released,archived} | select(.name == \"$branch_version\")"`
+
+        if [[ $? != 0 ]] ; then
+            color_echo red "Invalid Version '$branch_version' given!"
+            color_echo yellow "Your version does not exist in JIRA for the XERP project."
+            return 1
+        fi
+
+        # check if the version is archived
+        if [[ `echo "$version_object" | jq ".archived"` == true ]] ; then
+            color_echo red "Invalid Version '$branch_version' given!"
+            color_echo yellow "You cannot open a Bug for an archived version."
+            return 1
+        fi
+
+        # check if the version is released
+        if [[ `echo "$version_object" | jq ".released"` == true ]] ; then
+            issue_class="$_JIRA_ISSUE_CLASS_BUG_PRODUCTION"
+        else
+            issue_class="$_JIRA_ISSUE_CLASS_BUG_STAGING"
+        fi
+
+        # set the fix_version
+        fix_version=`echo "$version_object" | jq ".name" -r`
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    git_user=`_mygit config --get user.email | cut -f1 -d'@'`
+    branch="$epic_branch"
+
+    account_id="$(_get_account_id "$git_user")"
+
+    default_description="Created by: {color:red}{{g new-bug}}{color}"
+
+    default_description+="\n\n[~$git_user], please update this ticket and description."
+
+    # what fields are required to create a bug
+    #   - Issue Class (figure out if Prod/Staging/Dev)
+    #   - Summary (provided or requested)
+    #   - Description (default to Summary with extra information)
+    #   - Roles (default to MW/DB)
+    #   - Affected Customer(s) (default to All xERP Customers)
+    #   - Priority (default to Medium)
+    #   - (optional) Epic Link (if bug is Dev)
+    declare -A fields=(
+        [project]="key|XERP"
+        [issuetype]="name|Bug"
+        [summary]="${summary//\"/\\\"}"
+        [description]="$default_description"
+        [priority]="id|$_JIRA_PRIORITY_MED_ID"
+        [$_JIRA_ISSUE_CLASS_FIELD]="id|$issue_class"
+        [$_JIRA_ROLES_FIELD]="[{ \"id\": \"$_JIRA_ROLES_MW_ID\" }, { \"id\": \"$_JIRA_ROLES_DB_ID\" }]"
+        [$_JIRA_AFFECTED_CUSTOMERS_FIELD]="[{ \"id\": \"$_JIRA_AFFECTED_CUSTOMERS_ALL\" }]"
+    )
+
+    # add epic link if that's where we're reporting the bug
+    if [[ -n "$epic_branch" ]] ; then
+        fields[$_JIRA_EPIC_LINK_FIELD]="$epic_branch"
+    fi
+
+    issue=`_create_jira_issue fields`
+
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to create new bug: $issue"
+        return 1
+    else
+        color_echo green "Created JIRA Issue $issue (https://neadwerx.atlassian.net/browse/$issue)"
+    fi
+
+    # what fields are required to Self-Allocate a bug
+    #   - Issue Source (default to Nead Werx)
+    #   - Time Tracking (Original Estimate and Remaining Estimate) (default to 4h)
+    #   - (optional) Fix Version (default to local branch, or nothing if Issue Class is "Bug - Dev (Epic)")
+    declare -A fields=(
+        [$_JIRA_ISSUE_SOURCE_FIELD]="id|$_JIRA_ISSUE_SOURCE_NEADWERX"
+        [timetracking]='{ "originalEstimate": "4h", "remainingEstimate": "4h" }'
+    )
+
+    if [[ -n "$fix_version" ]] ; then
+        fields[fixVersions]="[{ \"name\": \"$fix_version\" }]" #"# fixes syntax highlighting
+    fi
+
+    result=`_transition_jira_issue $issue $_JIRA_SUPPORT_SELF_ALLOCATE_TRANSITION fields`
+
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to Self-Allocate $issue: $result"
+        return 1
+    else
+        color_echo green "Transitioned Issue $issue via Self-Allocate"
+    fi
+
+    # update the issue with the correct branch (because we already know it)
+    # and the correct reporter (which should be the git user)
+    # and the correct assignee (same as the reporter)
+
+    if [[ -z "$branch" ]] ; then
+        # must have a fix_version, set branch to be a bug branch
+        branch="bug_${fix_version}_${issue}"
+    fi
+
+    declare -A fields=(
+        [$_JIRA_REVIEWER_FIELD]="accountId|$account_id"
+        [reporter]="accountId|$account_id"
+        [assignee]="accountId|$account_id"
+        [$_JIRA_BRANCH_FIELD]="$branch"
+    )
+
+    echo "Sleeping 5s to make sure JIRa is ready for the next awesomeness..."
+    sleep 5
+
+    result=`_set_jira_value $issue fields`
+
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to update $issue assignee/reporter: $result"
+        return 1
+    else
+        color_echo green "Updated Issue $issue with assignee/reporter"
+    fi
+
+    # finally, checkout the branch and begin development!
+    # be up-to-date before checking for remote branches
+    git_fetch
+
+    # check to see if this branch already exists
+    if _mygit branch -r | grep -q -P "origin/$branch" ; then
+        color_echo red "Bug branch already exists on the remote, checking out instead!"
+        _git checkout "$branch"
+    elif _mygit branch | grep -q -P "$branch" ; then
+        color_echo red "Bug branch already exists locally, checking out, then pushing to remote instead!"
+        _git checkout "$branch"
+        _git push -u "origin" "$branch"
+    else
+        # create the new bug branch
+        _git checkout -b "$branch" "origin/$fix_version"
+        _git push -u "origin" "$branch"
+    fi
+
+    return 0
+}
+
+# checkout based on on a specified date (YYYY-MM-DD)
+function g_co_by_date () {
+    date="$1"
+    shift
+
+    # check args
+    if [[ -z "$date" ]] ; then
+        color_echo red "Missing required date in ISO format (YYYY-MM-DD)!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    _git checkout `git rev-list -n 1 --first-parent --before="$date 00:00" master`
+
+    echo
+    color_echo red "Checked out code as of $date, do not make any commits!"
+    color_echo red "Use 'g checkout master' when done."
+    echo
+
+    return 0
+}
+# checkout a new bug from the version in the ticket, if there isn't already a branch to checkout
+function g_co_bug () {
+    issue="$1"
+    shift
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # get the jira branch for the issue
+    jira_branch=`_get_jira_value $issue $_JIRA_BRANCH_FIELD ".fields.$_JIRA_BRANCH_FIELD" "branch"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed co bug for issue $issue: $jira_branch"
+        return 1
+    fi
+
+    echo "$jira_branch" | grep -q '^bug_' || {
+        color_echo red "Branch for $issue doesn't look like a bug branch: $jira_branch"
+        echo "Try using 'g co-feature' instead."
+        return 1
+    }
+
+    # check for a missing branch
+    if [[ -z "$jira_branch" ]] ; then
+        color_echo red "Empty branch field on JIRA issue $issue!"
+        color_echo yellow "Fix this before beginning to work on a new bug."
+        echo "Hint: https://neadwerx.atlassian.net/browse/$issue"
+        return 1
+    fi
+
+    # check that the jira branch version exists
+    jira_branch_version=`echo $jira_branch | cut -f2 -d_`
+    if [[ -z "$jira_branch_version" ]] ; then
+        color_echo red "Branch field for JIRA issue $issue is incorrect!"
+        color_echo yellow "The branch field for your ticket seems incorrect: $jira_branch"
+        echo "Hint: Please fix this manually (https://neadwerx.atlassian.net/browse/$issue)"
+        return 1
+    fi
+
+    # get the fix version for the issue
+    fix_version=`_get_jira_value $issue "fixVersions" ".fields.fixVersions[-1].name" "fix version"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed co bug for issue $issue: $fix_version"
+        return 1
+    fi
+
+    # check for a missing fix_version
+    if [[ -z "$fix_version" ]] ; then
+        color_echo red "Empty fixVersion field on JIRA issue $issue!"
+        color_echo yellow "Fix this before checking out this bug/hotfix."
+        echo "Hint: https://neadwerx.atlassian.net/browse/$issue"
+        return 1
+    fi
+
+    # ensure that the fixVersion and the version in the branch match
+    if [[ "$fix_version" != "$jira_branch_version" ]] ; then
+        color_echo red "Your issue's fixVersion '$fix_version' does not match the version in the branch field '$jira_branch_version'!"
+        color_echo yellow "These versions should match, which is correct?"
+        echo "Hint: Please fix this manually (https://neadwerx.atlassian.net/browse/$issue)"
+        return 1
+    fi
+
+    # be up-to-date before checking for remote branches
+    git_fetch
+
+    # check to see if this branch already exists
+    if _mygit branch -r | grep -q -P "origin/$jira_branch" ; then
+        color_echo red "Bug branch already exists on the remote, checking out instead!"
+        _git checkout "$jira_branch"
+    elif _mygit branch | grep -q -P "$jira_branch" ; then
+        color_echo red "Bug branch already exists locally, checking out, then pushing to remote instead!"
+        _git checkout "$jira_branch"
+        _git push -u "origin" "$jira_branch"
+    else
+        # create the new bug branch
+        _git checkout -b "$jira_branch" "origin/$fix_version"
+        _git push -u "origin" "$jira_branch"
+    fi
+
+    return 0
+}
+
+# move the current bug branch to a different branch name, push the new branch,
+# update the version on JIRA, etc...
+function g_move_bug () {
+    new_version="$1"
+    shift
+
+    # check args
+    if [[ -z "$new_version" ]] ; then
+        color_echo red "Missing required version!"
+        return 1
+    fi
+
+    # get the old branch and the old version
+    old_branch=`_get_branch`
+    old_version=`echo "$old_branch" | cut -d_ -f2`
+
+    # must be on bug branch
+    if [[ ! $old_branch =~ ^bug_ ]] ; then
+        color_echo red "You can only \`g move-bug\` on a bug branch!"
+        return 1
+    fi
+
+    # new version must match a version glob
+    if [[ $new_version != v??.?? ]] && [[ $new_version != v?.?? ]] ; then
+        color_echo red "Version does not match glob v??.?? or v?.??"
+        return 1
+    fi
+
+    # new version must be different from the old version
+    if [[ "$new_version" == "$old_version" ]] ; then
+        color_echo red "Versions must be different!"
+        return 1
+    fi
+
+    # get the issue
+    issue=`echo "$old_branch" | cut -d_ -f3`
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+    skip_if_on_deleted_remote_branch && return 1
+    skip_if_need_to_push && return 1
+    skip_if_not_assignee_to_issue $issue && return 1
+
+    # ensure that the new version is ahead of the old version
+    old_version_major=`echo $old_version | grep -Po '(?<=v)\d+'`
+    old_version_minor=`echo $old_version | grep -Po '(?<=\.)\d+'| sed 's/^0*//'`
+    new_version_major=`echo $new_version | grep -Po '(?<=v)\d+'`
+    new_version_minor=`echo $new_version | grep -Po '(?<=\.)\d+' | sed 's/^0*//'`
+
+    # if the major version is lower, then that's a problem
+    if [[ $new_version_major -lt $old_version_major ]] ; then
+        color_echo red "Version must be newer than the current version!"
+        return 1
+    fi
+
+    # if the major version is the same, and the minor version is lower, then that's a problem
+    if [[ $new_version_major == $old_version_major ]] && [[ $new_version_minor -lt $old_version_minor ]] ; then
+        color_echo red "Version must be newer than the current version!"
+        return 1
+    fi
+
+    # ensure that the new version exists
+    if ! _mygit branch -r | grep -q -P "origin/$new_version" ; then
+        color_echo red "Version '$new_version' does not exist!"
+        return 1
+    fi
+
+    # ok, we're ready to "move" the bug
+    new_branch="bug_${new_version}_${issue}"
+
+    # let's create a new branch with the same name but different version
+    if _mygit branch -r | grep -q -P "origin/$new_branch" ; then
+        color_echo yellow "Your issue's branch has already been moved! Checking out instead..."
+        _git checkout "$new_branch"
+    else
+        # creating new branch
+        _git checkout -b "$new_branch"
+
+        # and, push it to bitbucket
+        _git push origin -u "$new_branch"
+    fi
+
+    # finally, update the JIRA ticket
+    declare -A fields=(
+        [fixVersions]="[{\"name\":\"$new_version\"}]"
+        [$_JIRA_BRANCH_FIELD]="$new_branch"
+    )
+
+    result=`_set_jira_value $issue fields`
+
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to set new branch for issue $issue: $result"
+        return 1
+    fi
+
+    # then, delete the old branch
+    _git branch -D "$old_branch" # locally
+    _git push origin --delete "$old_branch" # on the remote
+
+    # all done!
+    return 0
+}
+
+# TODO
+function g_move_feature () {
+    echo "TODO"
+}
+
+# rebase the given feature from master onto the given version in prep for versioning, then recommend a git push --force
+function g_rebase_feature () {
+    issue="$1"
+    shift
+    shift # onto
+    version="$1"
+
+    # check args
+    if [[ -z "$issue" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    if [[ -z "$version" ]] ; then
+        color_echo red "Missing required version branch!"
+        return 1
+    fi
+
+    # ensure the issue and version branches exist
+    if ! _mygit branch -r | grep -q -P "origin\/$issue" ; then
+        color_echo red "Missing issue branch 'origin/$issue' on remote!"
+        return 1
+    fi
+
+    if ! _mygit branch -r | grep -q -P "origin\/$version" ; then
+        color_echo red "Missing version branch 'origin/$version' on remote!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # switch to the issue branch
+    _git checkout "$issue"
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    # ensure that the current branch does not have any .devdb-* files in it
+    if compgen -G ".devdb-*" >/dev/null ; then
+        color_echo red "This feature branch has .devdb-* files laying around!"
+        color_echo yellow "These files must be deleted before you may rebase onto a version!"
+        echo "Hint: \`g rm .devdb-* && g commit -m \"Remove .devdb-* files\"\`"
+        return 1
+    fi
+
+    # rerere-train before rebasing to learn from our conflicts
+    color_echo yellow "g rerere-train"
+    g_rerere_train || return 1
+
+    # get the original HEAD
+    ORIG_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    _git rebase --onto "origin/$version" "origin/master" "$issue"
+
+    # get the new HEAD
+    NEW_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    # if the current merge status is not empty, or the HEADs changed, then we
+    # must have rebased something, so remind the user to git push --force
+    merge_status=`_git_merge_status`
+    if [[ -n "$merge_status" ]] || [[ $ORIG_HEAD != $NEW_HEAD ]] ; then
+        color_echo red "You have just rebased a potentially public branch!"
+        color_echo red "Remember to resolve any conflicts, then"
+        color_echo red "Remember to \`g push --force\` if your branch has diverged!"
+    fi
+
+    return 0
+}
+
+# rebase the given bug from an older point for the bug's version to the the most recent point
+# in an attempt to iron out conflicts, then recommend a git push --force
+function g_rebase_bug () {
+    # check the current branch to make sure it's a bug branch
+    branch=`_get_branch`
+
+    if [[ ! $branch =~ ^bug_ ]] ; then
+        color_echo red "Cannot \`g rebase-bug\` on branch $branch!"
+        echo "Hint: \`g co-bug\` your issue before running \`g rebase-bug\`"
+        return 1
+    fi
+
+    # get the issue
+    issue=`echo $branch | cut -f3 -d_`
+
+    skip_if_on_deleted_remote_branch && return 1
+
+    if [[ $1 != "ignore_assignee" ]] ; then
+        skip_if_not_assignee_to_issue $issue && return 1
+    fi
+
+    # parse the bug branch to get the correct version
+    version=`echo $branch | cut -f2 -d"_"`
+
+    # ensure the version branch exists
+    if ! _mygit branch -r | grep -q -P "origin\/$version" ; then
+        color_echo red "Missing version branch 'origin/$version' on remote!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    # rerere-train before rebasing to learn from our conflicts
+    color_echo yellow "g rerere-train"
+    g_rerere_train || return 1
+
+    # get the original HEAD
+    ORIG_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    _git rebase --onto "origin/$version" "origin/$version" "$branch"
+
+    # get the new HEAD
+    NEW_HEAD=`_mygit rev-parse HEAD 2>/dev/null`
+
+    # if the current merge status is not empty, or the HEADs changed, then we
+    # must have rebased something, so remind the user to git push --force
+    merge_status=`_git_merge_status`
+    if [[ -n "$merge_status" ]] || [[ $ORIG_HEAD != $NEW_HEAD ]] ; then
+        color_echo red "You have just rebased a potentially public branch!"
+        color_echo red "Remember to resolve any conflicts, then"
+        color_echo red "Remember to \`g push --force\` if your branch has diverged!"
+    fi
+
+    return 0
+}
+
+# create a new pull request for the given bug, then delete the local copy of the bug branch
+function g_pr_bug () {
+    # can only pr-bug on a bug_* branch
+    bug_branch=`_get_branch`
+
+    if [[ ! $bug_branch =~ ^bug_ ]] ; then
+        color_echo red "You can only \`g pr-bug\` on a bug branch!"
+        return 1
+    fi
+
+    # get the issue
+    issue=`echo $bug_branch | cut -f3 -d_`
+    jira_url="https://neadwerx.atlassian.net/browse/$issue"
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+    skip_if_on_deleted_remote_branch && return 1
+    skip_if_need_to_push && return 1
+    skip_if_not_assignee_to_issue $issue && return 1
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    # ensure that we've recently sync'd
+    if is_sync_behind ; then
+        # ask the user if we should sync now
+        color_echo red "Your branch needs to sync before creating a pull request!"
+        ask "Would you like to run \`g sync\` now?"
+
+        if [[ $ANSWER != "y" ]] ; then
+            color_echo red "Aborting \`g pr-bug\` at user's request!"
+            return 1
+        fi
+
+        # sync
+        g_sync || {
+            color_echo red "Failed to sync cleanly, please fix any merge issues, then push your changes"
+            return 1
+        }
+
+        # push the changes
+        _git push || {
+            color_echo red "Failed to push changes!"
+            return 1
+        }
+    fi
+
+    # ensure that the JIRA issue is in the "In Progress" status
+    issue_status=`_get_jira_value $issue "status" ".fields.status.name"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed get issue status for issue $issue: $issue_status"
+        return 1
+    fi
+
+    if [[ "$issue_status" != "In Progress" ]] ; then
+        color_echo red "Cannot run pr-bug if your issue is not currently 'In Progress'."
+        color_echo yellow "Please update JIRA Issue $issue and transition to the proper status, then re-run \`g pr-bug\`."
+        echo $jira_url
+        return 1
+    fi
+
+    # parse the bug branch for the version and issue key
+    version=`echo $bug_branch | cut -f2 -d"_"`
+    issue=`echo $bug_branch | cut -f3 -d"_"`
+
+    # gather information for the Resolve transition
+    root_cause=""
+    root_cause_description=""
+    root_cause_commit=""
+    testing_procedure=""
+
+    # ensure that the JIRA issue is in the "In Progress" status
+    issue_status=`_get_jira_value $issue "status" ".fields.status.name"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed get issue status for issue $issue: $issue_status"
+        return 1
+    fi
+
+    # ask for root_cause
+    declare -A root_causes=(
+        ["Bug as Side Effect of Other Work"]=10870
+        ["Customer Request (Data, Config, Code)"]=12300
+        ["Internal Request (Data, Config, Code)"]=11500
+        ["User Error"]=10868
+        ["Performance Fix"]=10871
+        ["Hardware or Network Failure"]=11103
+        ["Browser Compatibility"]=11900
+        ["Bad Merge"]=12600
+        ["Act of God"]=11100
+    )
+
+    # use a second ordered array of keys to have the option_select maintain ordering
+    declare -a root_causes_keys_ordered=(
+        "Bug as Side Effect of Other Work"
+        "Customer Request (Data, Config, Code)"
+        "Internal Request (Data, Config, Code)"
+        "User Error"
+        "Performance Fix"
+        "Hardware or Network Failure"
+        "Browser Compatibility"
+        "Bad Merge"
+        "Act of God"
+    )
+
+    option_select "Root Cause:" root_causes_keys_ordered
+
+    # then the actual root_cause id value will be at the selected key
+    root_cause="${root_causes[$SELECTION]}"
+
+    # ask for the description
+    while [[ -z "$root_cause_description" ]] ; do
+        q "Root Cause Description:" root_cause_description
+    done
+
+    # ask for the root cause commit (and check it, if valid)
+    while [[ -z "$root_cause_commit" ]] ; do
+        q "Root Cause Commit (0 if unknown):" ANSWER
+
+        declare -a acceptable_unknowns=(
+            "0"
+            "unk" "unknown"
+            "none" "nope"
+            "na" "n/a" "N/a" "N/A"
+        )
+        matches_glob_element "$ANSWER" "${acceptable_unknowns[@]}"
+        if [[ $? == 0 ]] ; then
+            root_cause_commit="0"
+        elif [[ -z "$ANSWER" ]] ; then
+            continue
+        else # not empty, not unknown, check the git commit given
+            if ! _mygit rev-parse --verify "$ANSWER^{commit}" 1>/dev/null 2>&1 ; then
+                # not a valid git commit
+                color_echo red "Please provide a valid commit SHA."
+                continue
+            fi
+
+            root_cause_commit="$ANSWER"
+
+            # ANSWER is a valid git commit, double check this is what the user wanted
+            _mygit log -1 --stat "$root_cause_commit"
+            echo "" # newline
+
+            ask_with_timeout "5" "y" "Is the commit above the root cause of your bug?"
+            if [[ "$ANSWER" == "n" ]] ; then
+                # loop and ask again
+                root_cause_commit=""
+                continue
+            fi
+
+            # get the full SHA for the root_cause_commit
+            root_cause_commit=`_mygit rev-parse "$root_cause_commit"`
+        fi
+    done
+
+    # ask for the testing procedure
+    while [[ -z "$testing_procedure" ]] ; do
+        q "How did you test your code fix for this bug?" testing_procedure
+    done
+
+    # default reviewers (for now)
+    kirk_username="kirkbauer"
+    brent_username="brentgt"
+    drue_username="drue_biggers"
+
+    # get the requester information
+    name=`_mygit config --get user.name`
+    email=`_mygit config --get user.email`
+
+    issue_type=`_get_jira_value $issue "issuetype" ".fields.issuetype.name"`
+
+    read -r -d '' json <<END_JSON
+{
+  "title": "[$issue_type $version] $issue",
+  "description": "Requester: $name <$email>",
+  "close_source_branch": true,
+  "source": {
+    "branch": {
+      "name": "$bug_branch"
+    }
+  },
+  "destination": {
+    "branch": {
+      "name": "$version"
+    }
+  },
+  "reviewers": [
+    {
+      "username": "$kirk_username"
+    },
+    {
+      "username": "$brent_username"
+    },
+    {
+      "username": "$drue_username"
+    }
+  ]
+}
+END_JSON
+
+    # replace newlines in json with spaces
+    json=`echo $json | tr '\n' ' '`
+
+    # request the pull request be opened
+    username=`get_credentials bitbucket | jq '.username' -r`
+    apikey=`get_credentials bitbucket | jq '.apikey' -r`
+    api=`get_credentials bitbucket | jq '.api' -r`
+
+    # get the current repo from bitbucket
+    repo=`_get_repo_name`
+
+    response=`curl -q -s -X POST -H "Content-Type: application/json" -u $username:$apikey "$api/repositories/neadwerx/$repo/pullrequests" -d "$json"`
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to create pull request, please check bitbucket!"
+        return 1
+    fi
+
+    type=`echo $response | jq '.type' -r`
+    if [[ $type == "error" ]] ; then
+        # there was an error
+        error_message=`echo $response | jq '.error.message' -r`
+        color_echo red "Error creating pull request, got message: $error_message"
+        return 1
+    fi
+
+    # get some pr info
+    pr_id=`echo $response | jq '.id' -r`
+    pr_link=`echo $response | jq '.links.html.href' -r`
+
+    color_echo green "Created pull-request #$pr_id ($pr_link)"
+
+    #escape problematic descriptions
+    root_cause_description_escaped="${root_cause_description//[\{\}]/}"
+    testing_procedure_escaped="${testing_procedure//[\{\}]/}"
+
+    # transition the issue
+    declare -A transition_fields=(
+        [$_JIRA_ROOT_CAUSE_FIELD]="id|$root_cause"
+        [$_JIRA_ROOT_CAUSE_COMMIT_FIELD]="$root_cause_commit"
+        [$_JIRA_ROOT_CAUSE_DESCRIPTION_FIELD]="${root_cause_description_escaped//\"/\\\"}"
+        [$_JIRA_TESTING_PROCEDURE_FIELD]="${testing_procedure_escaped//\"/\\\"}"
+    )
+
+    result=`_transition_jira_issue $issue $_JIRA_SUPPORT_RESOLVE_ISSUE_TRANSITION transition_fields`
+
+    if [[ $? != 0 ]] ; then
+        color_echo red "Failed to Resolve Issue: $result"
+        color_echo yellow "Don't forget to update the ticket!"
+        echo "$jira_url"
+    else
+        color_echo green "Transitioned $issue via 'Resolve Issue' ($jira_url)"
+    fi
+
+    _git checkout "master"
+
+    # delete the local copy of the bug_branch because we are done with it
+    _git branch -D $bug_branch
+
+    return 0
+}
+
+# for each pr id given:
+#   - skip, if the pr is already merged
+#   - checkout the source branch (bugs only, for now)
+#   - g_rebase_bug
+#   - resolve conflicts, if any
+#   - merge the pr via bb api (or provide a url to click, if conflicts)
+function g_pr_accept () {
+    ids="$@"
+
+    if [[ -z "$ids" ]] ; then
+        color_echo red "Missing required pull-request ids!"
+        return 1
+    fi
+
+    # be up-to-date
+    git_fetch
+
+    # request the pull request be opened
+    username=`get_credentials bitbucket | jq '.username' -r`
+    apikey=`get_credentials bitbucket | jq '.apikey' -r`
+    api=`get_credentials bitbucket | jq '.api' -r`
+
+    # get the current repo from bitbucket
+    repo=`_get_repo_name`
+
+    # which version, if any, all the pull request id's share
+    version=""
+
+    for id in $ids ; do
+        # allow #1234 -> 1234
+        if [[ $id == \#* ]] ; then
+            id=`echo $id | cut -c2-`
+        fi
+
+        pull_request=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$apikey "$api/repositories/neadwerx/$repo/pullrequests/$id?fields=description,destination.branch.name,source.branch.name,title,state,type,participants.user.display_name,participants.approved"`
+        if [[ $? != 0 ]] ; then
+            color_echo red "Failed to curl pull-request with id '$id', got response: $pull_request"
+            return 1
+        fi
+
+        type=`echo $pull_request | jq '.type' -r`
+        if [[ $type == "error" ]] ; then
+            # there was an error
+            error_message=`echo $pull_request | jq '.error.message' -r`
+            color_echo red "Error getting pull-request with id '$id', got message: $error_message"
+            return 1
+        fi
+
+        # we have a pull-request, check the state
+        state=`echo $pull_request | jq '.state' -r`
+        if [[ $state != "OPEN" ]] ; then
+            color_echo yellow "Cannot accept pull-request '$id' in state '$state', skipping..."
+            continue
+        fi
+
+        # get the pull-request data
+        source_branch=`echo $pull_request | jq '.source.branch.name' -r`
+        dest_branch=`echo $pull_request | jq '.destination.branch.name' -r`
+        title=`echo $pull_request | jq '.title' -r`
+        desc=`echo $pull_request | jq '.description' -r`
+
+        # update / check the version
+        if [[ -z $version ]] ; then
+            # version has not yet been set
+            version="$dest_branch"
+        elif [[ "$version" != "$dest_branch" ]] ; then
+            # pull request ids have different versions in them, so set to false
+            # to indicate we should not prompt for a merge-up afterwards
+            version=false
+        fi
+        # else, the versions are the same, which is ok
+
+        color_echo green "Accepting pull-request: $title (#$id)"
+
+        # checkout the source branch
+        _git checkout "$source_branch"
+
+        # pull any updates
+        g_pull || {
+            color_echo red "Failed to pull changes!"
+            return 1
+        }
+
+        # fetch to be up-to-date
+        git_fetch "force"
+
+        # rebase the bug
+        g_rebase_bug "ignore_assignee"
+
+        # check if we're in a clean state or not
+        _git_is_clean_safe || {
+            color_echo yellow "Please resolve any conflicts, then re-run \`g pr-accept $id\`"
+            return 1
+        }
+
+        # push the rebased changes
+        _git push --force || {
+            color_echo red "Failed to push changes!"
+            return 1
+        }
+
+        # rebase is conflict free, merge the pr via bb api
+
+        # get the current sha for the HEAD
+        HEAD=`_mygit rev-parse HEAD`
+
+        # first, "update" the pull request
+        color_echo yellow "Updating pull request #$id..."
+
+        # loop over pullrequest activity api and check to see if the source matches the current HEAD,
+        # when it does, then we can be sure that our rebase made it to bitbucket's pull request, and
+        # then we can merge via the api
+        started=`date +%s`
+        waited_too_long=120 # don't wait more than this many seconds
+        pr_can_be_merged=false
+        while true ; do
+            # don't make this curl request too quickly
+            sleep 5
+
+
+            pr_source=`curl -q -s -X GET -H "Content-Type: application/json" -u $username:$apikey "$api/repositories/neadwerx/$repo/pullrequests/$id?fields=source.commit.hash"`
+            if [[ $? != 0 ]] ; then
+                color_echo red "Failed to curl pull-request source with id '$id', got response: $pr_source"
+                return 1
+            fi
+
+            type=`echo $pr_source | jq '.type' -r`
+            if [[ $type == "error" ]] ; then
+                # there was an error
+                error_message=`echo $pr_source | jq '.error.message' -r`
+                color_echo red "Error getting pull-request source with id '$id', got message: $error_message"
+                return 1
+            fi
+
+            # get the short sha for the source commit (this is the first 20-ish characters for some reason...?)
+            source_short_sha=`echo $pr_source | jq '.source.commit.hash' -r`
+
+            # check to see if the current HEAD starts with the current source_short_sha for the pull request
+            if [[ $HEAD == $source_short_sha* ]] ; then
+                pr_can_be_merged=true
+                break
+            fi
+
+            # check if we've been waiting and curling for too long
+            now=`date +%s`
+            time_spent=$(($now - $started))
+            if [[ $time_spent -gt $waited_too_long ]] ; then
+                pr_can_be_merged=false
+                break
+            fi
+        done
+
+        if [[ $pr_can_be_merged == false ]] ; then
+            color_echo red "Waited too long for pull request #$id to be updated, aborting!"
+            return 1
+        fi
+
+        # pr is able to be merged, so merge it!
+        color_echo green "Updated."
+        color_echo yellow "Merging pr #$id..."
+
+        # get the current user's git information to add to the merge message
+        name=`_mygit config --get user.name`
+        email=`_mygit config --get user.email`
+
+        # get the approvers from the pull-request
+        approvers=`echo $pull_request | jq '.participants[] | select(.approved) | .user.display_name' -r `
+
+        # build the commit message (try to mimick what the UI writes)
+        commit_message="Merged in $source_branch (pull request #$id)\n"
+        commit_message+="\n"
+        commit_message+="$title\n"
+        commit_message+="\n"
+        commit_message+="Accepted-by: $name <$email>\n"
+
+        # add each approver to the commit message
+        while read approver ; do
+            [[ -z "$approver" ]] && continue
+            commit_message+="Approved-by: $approver <???@merchlogix.com>\n"
+        done <<< "$approvers"
+
+        # send off the merge request
+        json="{ \"message\": \"$commit_message\", \"close_source_branch\": true }"
+        merge_response=`curl -q -s -X POST -H "Content-Type: application/json" -u $username:$apikey "$api/repositories/neadwerx/$repo/pullrequests/$id/merge" -d "$json"`
+        if [[ $? != 0 ]] ; then
+            color_echo red "Failed to curl merge pull-request with id '$id', got response: $merge_response"
+            return 1
+        fi
+
+        type=`echo $merge_response | jq '.type' -r`
+        if [[ $type == "error" ]] ; then
+            # there was an error
+            error_message=`echo $merge_response | jq '.error.message' -r`
+            color_echo red "Error merging pull-request with id '$id', got message: $error_message"
+            return 1
+        fi
+        if [ -z "$type" ] ; then
+            # there was an error
+            color_echo red "Received empty response from Bitbucket, aborting."
+            return 1
+        fi
+
+        # all done!
+        color_echo green "Successfully merged pull-request #$id"
+
+        # delete the remote copy of the merged branch
+        _git checkout "master"
+        _git branch -D $source_branch
+        _git push origin --delete $source_branch
+    done
+
+    # after everything, g prune to delete branches that were temporary
+    git_fetch "force"
+    g_prune "true"
+
+    # if all the pull requests were for the same version (dest branch), then
+    if [[ -n $version ]] && [[ "$version" != false ]] ; then
+        # prompt for a g_merge_up
+        ask_with_timeout "5" "y" "Would you like to run \`g merge-up $version\` now?"
+
+        if [[ $ANSWER == "y" ]] ; then
+            g_merge_up $version
+
+            if [[ $? != 0 ]] ; then
+                color_echo red "Failed to run \`g merge-up $version\`!"
+                return 1
+            fi
+        fi
+    fi
+
+    # all done!
+    color_echo green "Done."
+    return 0
+}
+
+# merge all version branches (in-order) up towards master
+# in prep for a rollout
+function g_merge_up () {
+    # optional start version argument
+    start_version="$1"
+
+    # be up-to-date
+    git_fetch
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    _git checkout "master"
+
+    if [[ -z "$start_version" ]] ; then
+        # get the most recent release version from the tags on the master branch
+        release_version=`_mygit describe --abbrev=0 --tags --match 'release_thd-v*' | cut -f2 -d_ | cut -f2 -d-`
+        if [[ -z "$release_version" ]] ; then
+            color_echo red "Could not find valid release version!"
+            return 1
+        fi
+    else
+        release_version="$start_version"
+    fi
+
+    # get all versions in the order that they should be merged
+    declare -a merge_list
+    next_branch="$release_version"
+
+    # ensure that the release_version exists on the remote
+    if ! _mygit branch -r | grep -q -P "origin/$release_version" ; then
+        next_branch="master"
+    fi
+
+    while [[ $next_branch != "master" ]] ; do
+        # add the next_branch to the merge_list
+        merge_list+=( $next_branch )
+
+        # derive the next possible versions
+        next_minor_version=`get_next_version_minor $next_branch`
+        next_major_version=`get_next_version_major $next_branch`
+
+        # check to see which versions exist on the remote
+        if _mygit branch -r | grep -q -P "origin/$next_minor_version" ; then
+            next_branch="$next_minor_version"
+        elif _mygit branch -r | grep -q -P "origin/$next_major_version" ; then
+            next_branch="$next_major_version"
+        else
+            # last try, maybe we skipped a version, so check the next next minor version
+            next_next_minor_version=`get_next_version_minor $next_minor_version`
+            if _mygit branch -r | grep -q -P "origin/$next_next_minor_version" ; then
+                next_branch="$next_next_minor_version"
+            else
+                # whelp, we tried, didn't we?
+                next_branch="master"
+            fi
+        fi
+    done
+
+    # TEMP: force to v7.03 and v7.07 then v7.08
+    #merge_list=(v7.03 v7.07 v7.08)
+    #color_echo red "Hard-coded to v7.03 -> v7.07 -> v7.08 -> master!"
+
+    # don't forget to add master to the merge_list
+    merge_list+=( "master" )
+
+    # ok, time to merge with the following steps
+    #   - pop the next merge branch
+    #   - pop the candidate branch
+    #       - if candidate in empty, then we're done
+    #   - checkout the candidate branch
+    #   - update the candidate branch (and some checks)
+    #   - merge the merge branch into the candidate branch
+    #   - save the candidate branch as the next merge branch, repeat
+    array_pop "merge_list" "merge_branch"
+    array_pop "merge_list" "candidate_branch"
+
+    while [[ -n "$candidate_branch" ]] ; do
+        _git checkout "$candidate_branch"
+
+        # skip if not safe
+        skip_if_not_clean_safe && return 1
+        skip_if_need_to_push && return 1
+
+        # update candidate_branch
+        g_update || return 1
+
+        # merge merge_branch into candidate_branch
+        _git merge --no-edit -m "Merge-up origin/$merge_branch into $candidate_branch" "origin/$merge_branch" || return 1
+
+        if need_to_push ; then
+            ask_with_timeout "5" "y" "There are merge-up changes to push, would you like to push them now?"
+
+            if [[ $ANSWER != "y" ]] ; then
+                color_echo red "Aborting g merge-up at user's request!"
+                return 1
+            fi
+
+            # push
+            _git push
+        fi
+
+        # pop the next candidate
+        merge_branch="$candidate_branch"
+        array_pop "merge_list" "candidate_branch"
+    done
+
+    # should be on master, final push ask
+    if need_to_push ; then
+        ask_with_timeout "5" "y" "There are merge-up changes to push, would you like to push them now?"
+
+        if [[ $ANSWER != "y" ]] ; then
+            color_echo red "Aborting g merge-up at user's request!"
+            return 1
+        fi
+    fi
+
+    # all merged up!
+    color_echo green "Done."
+    return 0
+}
+
+# train the rerere cache on some list of refs,
+# default to refs from current tip to branch point
+function g_rerere_train () {
+    ARGS="$@"
+
+    current_branch=`_get_branch`
+    if [[ "$current_branch" == "DETACHED HEAD" ]] ; then
+        color_echo red "Cannot train in a DETACHED HEAD state!"
+        echo "Hint: run \`g checkout master\` to get back to a known ref"
+        return 1
+    fi
+
+    # no args sent, default to HEAD...<sync_branch>
+    if [[ -z "$ARGS" ]] ; then
+        sync_branch=`_get_sync_branch $current_branch`
+        if is_remote_branch_deleted $sync_branch ; then
+            # warn about a deleted sync branch
+            color_echo yellow "Your current sync branch '$sync_branch' has been deleted on the remote!"
+            color_echo yellow "Maybe your issue should be moved to a new version?"
+            return 1
+        fi
+
+        # set default args
+        ARGS=( "--all" "--merges" "--left-only" "--first-parent" "HEAD...origin/$sync_branch" )
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+    skip_if_need_to_push && return 1
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    # make sure we're at the repo root
+    cd `_mygit rev-parse --show-toplevel` || return 1
+
+    # ensure the rr-cache directory exists
+    mkdir -p ".git/rr-cache" || return 1
+
+    commits_count=`_mygit log ${ARGS[@]} --format="%H %P" | wc -l`
+    commit_i=0
+    color_echo yellow "Found $commits_count commits..."
+    _mygit log ${ARGS[@]} --format="%H %P" | while read commit parent1 other_parents ; do
+        commit_i=$(( $commit_i + 1 ))
+        echo -n "$commit ($commit_i/$commits_count) "
+
+        # [see: https://stackoverflow.com/questions/501407/is-there-a-git-merge-dry-run-option]
+        merge_conflicts=`_mygit merge-tree $(_mygit merge-base $parent1 $other_parents) $parent1 $other_parents | sed -n '/+<<<<<<< .our/,/+>>>>>>> .their/p;/^changed in both/{n;N;N;s/^/#/mg;p}'`
+
+        if [[ -z "$merge_conflicts" ]] ; then
+            # Cleanly merges
+            color_echo yellow "skipping..."
+        else
+            # merge has conflicts, so let's replay it
+            color_echo green "learning..."
+            # checkout before the merge
+            _mygit checkout -q "$parent1^0"
+
+            # perform merge
+            _mygit merge $other_parents >/dev/null 2>&1
+
+            # attempt to learn
+            if [[ -s ".git/MERGE_RR" ]] ; then
+                _mygit rerere >/dev/null 2>&1
+                _mygit checkout -q $commit -- .
+                _mygit rerere >/dev/null 2>&1
+            fi
+        fi
+
+        # reset our work tree
+        _mygit reset -q --hard
+    done
+
+    # go back to the original branch
+    _mygit checkout -q "$current_branch"
+}
+
+# log all commits on the current branch, possibly by author only
+function g_diff_branch () {
+    # get the author, if passed
+    author="$1"
+    if [[ -n "$author" ]] ; then
+        author_flag="--author=$author"
+    fi
+
+    branch=`_get_branch`
+    if [[ $branch == "DETACHED HEAD" ]] ; then
+        color_echo red "Cannot diff in a DETACHED HEAD state!"
+        echo "Hint: run \`g checkout <branch>\` to get back to a known ref"
+        return 1
+    fi
+
+    # ensure the current branch is up-to-date with the remote copy
+    if ! is_head_match_upstream ; then
+        color_echo red "Your local branch is behind the upstream, you should \`g pull\` before continuing."
+        return 1
+    fi
+
+    sync_branch=`_get_sync_branch $branch`
+    branch_point=`_mygit branch-point $sync_branch`
+
+    _git log --patch --no-merges --first-parent --left-only "HEAD...$branch_point" $author_flag
+}
+
+# feature diff - This will search commit tags for a ticket ID and then show the combined diff of every commit with that tag
+function g_fdiff() {
+
+    if [[ -z "$1" ]] ; then
+        color_echo red "Missing required JIRA issue!"
+        return 1
+    fi
+
+    # skip if not safe
+    skip_if_not_clean_safe && return 1
+
+    echo "Not currently working with new rebase methods"
+    exit
+
+    # save the current branch so we can come back to here
+    CURRENT_BRANCH=$( git branch | grep \* | cut -d ' ' -f2 )
+    echo "You are on branch: $CURRENT_BRANCH"
+    echo "You are looking for feature: $1"
+    git log | grep -B 5 $1 | grep commit | sed 's/commit\ //' > .feature_diff.out
+
+    if [ ! -s .feature_diff.out ] ; then
+        color_echo red "No commits found!"
+        return 1
+    fi
+
+    color_echo green "Commits found!"
+    LAST=$( tail -n 1 .feature_diff.out )
+    echo "Oldest commit in feature is: $LAST"
+
+    # get the oldest commit in the ticket and go to the commit right before that one
+    echo "Checking out commit before oldest commit in feature"
+    git checkout $LAST > /dev/null
+    git checkout HEAD~1 > /dev/null
+    echo "Checked out!"
+
+    #Creating reversed hash file
+    tac .feature_diff.out > .rev_feature_diff.out
+
+    while read line; do
+        echo "Found commit: $line"
+        git cherry-pick -n -X theirs $line
+    done < .rev_feature_diff.out
+
+    #Removing uneeded reversed hash file
+    rm -f .rev_feature_diff.out
+    git diff --cached > .feature_diff.out
+    echo "Resetting to HEAD"
+    git reset HEAD --hard > /dev/null
+    echo "Checking out original branch"
+    git checkout $CURRENT_BRANCH > /dev/null
+    color_echo green "Done: also written .feature_diff.out"
+    vi .feature_diff.out
+}
+
+#### EASTER EGGS ####
+
+# per Andrey, a heart shall be printed
+function g_xoxo () {
+    heart="❤"
+    case "$(($RANDOM % 4))" in
+        0)
+            heart='
+     ******       ******
+   **********   **********
+ ************* *************
+*****************************
+*****************************
+*****************************
+ ***************************
+   ***********************
+     *******************
+       ***************
+         ***********
+           *******
+             ***
+              *
+'
+            ;;
+        1)
+            heart='
+  ❤ ❤ ❤   ❤ ❤ ❤
+❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤
+❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤
+❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤ ❤
+  ❤ ❤ ❤ ❤ ❤ ❤ ❤
+    ❤ ❤ ❤ ❤ ❤
+      ❤ ❤ ❤
+        ❤
+'
+            ;;
+        2)
+            heart='
+          |
+          ||
+      --\ \||
+       --\ \||
+        --\ \||
+         --\ \|
+          --\ \
+             \ \
+              \ \
+               \ \
+              MMMMMMMMM                         MMMMMMMMM
+          MMMMMMMMMMMMMMMMMM               MMMMMMMMMMMMMMMMMM
+       MMMMMMMXXXXXXXXXXMMMMMMM         MMMMMMMXXXXXXXXXXMMMMMMM
+    MMMMMMXXXXXXXXXXXXXXXXXMMMMMM     MMMMMMXXXXXX:::::XXXXXXMMMMMM
+   MMMMMXXXXXXXX::::::::XXXXXXMMMM   MMMMXXXXXX:::::::::::XXXXXMMMMM
+  MMMMXXXXXXX:::::::::::::::XXXXMMM MMMXXXX::::::::::::::::::XXXXMMMM
+ MMMMXXXXXX::::::::::::::::::::XXXMMMXXX:::::::::::.....:::::::XXXMMMM
+ MMMXXXXX::::::::::::::::::::::::XXXXX:::::::::...........::::::XXXMMM
+MMMXXXXX:::::::::::.......:::::::::X::::::::......    ......::::XXXXMMM
+MMMXXXX:::::::::..............:::::::::::.......         ....::::XXXMMM
+MMMXXXX::::::::..................:::::.......             ...::::XXXMMM
+MMMXXXX:::::::.....................:............         ....::::XXXMMM
+MMMXXXX:::::::....................................       ....::::XXXMMM
+MMMXXXX:::::::......................................    .....::::XXXMMM
+MMMXXXXX::::::....................................... ......::::XXXXMMM
+MMMMXXXX:::::::.............................................::::XXXMMMM
+ MMMXXXX::::::::............................................::::XXXMMM
+ MMMMXXXX::::::::..........................................::::XXXMMMM
+  MMMXXXX::::::::::.......................................:::::XXXMMM
+  MMMMXXXX:::::::::::...................................::::::XXXMMMM
+   MMMXXXXX::::::::::::..............................::::::::XXXXMMM
+   MMMMXXXXX:::::::::::::.........................::::::::::XXXXMMMM
+    MMMMXXXXX:::::::::::::::...................::::::::::::XXXXMMMM
+     MMMMXXXXX:::::::::::::::::.............::::::::::::::XXXXMMMM
+      MMMMXXXXXX::::::::::::::::::.......::::::::::::::XXXXXXMMMM
+       MMMMXXXXXXXX::::::::::::::::...::::::::::::::XXXXXXXXMMMM
+         MMMMXXXXXXXXX::::::::::::::::::::::\::::XXXXXXXXXMMMM
+           MMMMMXXXXXXXXXX:::::::::::::::::\ \XXXXXXXXXMMMMM
+              MMMMMMXXXXXXXXXXX:::::::::XXXX\ \XXXXMMMMMM
+                  MMMMMMXXXXXXXXXXX:XXXXXXXXX\ \MMMMM
+                      MMMMMMXXXXXXXXXXXXXXXMMM\ \
+                          MMMMMMXXXXXXXMMMMMM  \ \
+                              MMMMMXMMMMM       \ \
+                                 MMMMM           \ \   \
+                                  MMM             \ \ \\
+                                   M             \\\\\\\
+                                                   \\\\\
+                                                     \\\
+                                                       \
+'
+            ;;
+    esac
+
+    color_echo red "$heart"
+}
+
+#per Kateri, how unicorns are made
+function g_unicorn () {
+    read -r -d '' unicorn <<'END_UNICORN'
+
+................................................................,,,,,,,::,,,,,,,,,,,,,::::::~~~~~======++=====++++++++++++++++++++++++++++++=======~~::::,,,,:::::::::::::::::::,,::::::,,,,,,,,,,::::::
+...............................................................,,,,::,,,,,,,,,,:::::::~~~~~~=======+==+++++++=++++==~==++++++++++++++++++++++====+++===~~~~:::::::::::::::::::::::::::,,,,,:,,,,::,,,:,:
+..............................................................,,,,,,,,,,,,,,,,::::::~~~~~=======++=++++===========+=~~=++++++++++++++++++++++++++++=+===~~~~~~:::,::::::::::::::::::::,,,,,,,.,:,,,,::::
+             ................................................,,,,,,,,,,,,,,,::::::~~~~~~~~~:~======================+++++++++++++++++++~==+++++++++++++=====~~~~~:,:~~~~:::::::::~:::,,,,,,,:+:,,,:,,,,,:
+............. . ............................................,,,,,,,,,,,,,:::,,:,:,:::~~~~~~:~~~==========+=+===++++++++++++++++++++++=:~=++=++++++++==~~=========~~~~~~~~~~::::~~~~:,,::,::IZ,::::,,,,::
+...........................................................,,,,,,,,,,,,,,,,:,,.,,,,,:::::~:~~~~~~===============+++++=+++++++++++++++===+++++++++++++=:~============~~~~~~~~~~~~~~::,,:,,ZD8DNN~:::,,,,:
+.........................................................,,,,,,:,::,:,~+IZ8DNDDDDDDDO$?~,::,:~~~~~~=============+=++++++++++++++++++===============+=========================~~~:::::,:=?DDDDI,,:~::,,,:
+.......................................................,,,,,,::,:~+Z8DDDDDDDDDDDDDDDDDDD8$=::::::~~~~~=====+++++++++++++++++++=======~~~~~==============+++++++++++==+===:~=====~~:::~~~NDDDDDN~I+,,:,,,
+...................................................,,,,,,,,,:,:+DDDDDDDDDDDDDDDDDDDDDDDDD8DZ~,,::::~~===+++++++++++++++++++======~=~~~===========+++++++++++++++++++++++~,=++++==~~:~::+=O8DDDDDO,ZI,:,:
+............................................,,,,,,,,,,,:::,:?8DDD8D8DDDDDDDDDDDDDDDDDDDDDDDDD8~8$,::~~~====++++==================~~~=========++++++++?++==+?+??????????=?=?????+++=~=:::,?DDDD88??$7,:::
+..........................................,,,,,:,,,,::,:,?D8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D8.=7?,::~~======~~:~~===========~:~=======++++++??????=~:==+++++++++++++++++++++++?DDD~ZDDDDD8=,:,=O::::
+.........................................,,,:::,,,,::,,=ODDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8I7O~,:~~~=====:,,~====++====+===++++++++????+++++++====+++++++++++===+++++====~ODDD$D8D88=,:,::$:::::
+.......................................,,,::::::::,,,~ZDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDD8DDN=.:::~~==~~~============++++=++++++++++++++??++++++++++==================~,?D88DDNON?,,,,,,,,,,,,
+......................................,,:::::::::,,,ZN8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8OD8:,:::~===============++++++++++?++++=+++++++++==============~~=====~~:~:~IDODDO.Z,,.,,,,,,,,,,,
+......................................,::::::::,,,,?D8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D$~~$$I,~~~~==========+++++++++?+??+??+=~=+++=======~~~~~~~~~~~~~~~~~~~~::::,?$8$O:,~$.,.,,,,,,,,,,
+.....................................,::::::::::,,$ND8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDZ.,,:::~~~~===+++++=+++++????????+++==========~~:::::::::~~~~~~~~~~~:::::,,:$O,:::,~,::::::::,,,
+...................................,,::::,,,:~~:,?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDOODDDDDDDDD8DD:,,,,:~~~==++==++++++??????++++++++====~~~:::::::::::::::~~~~~~::::::::::,,,:::~::,,:::::,,,,,,
+..................................,,::~~~:,,,~:,?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8$ZDDDDDDDDDDDD~,,,,::~========+++?????+?++++++====~~~::::::::::::::::~:::~~:::::::::::,:::::,,,,,:::::::,,,,:
+................................,,::::::::~,:::8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDD7ODDDDDDDDDDDDD~,,,:~~~==+++==++?????+++++====~~:::::::::::::::::::::::::::::::,,,,::::::::::::::::~:::,:::::
+...............................,,:::::::::::,=ODDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8Z8DDIDDDDDDDDDDDDDDD+,:::~~==++++++??++++++===~~::::::::::::::::::::::::::::::::::::,,,,:::::::::::::~~::::::::::
+.............................,,,::::::::::::ZD8D8DDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDDD?DDD8?DDD~DDDDDDDDDDDDDDDD~,::~~==++??++++++====~:::::,,::::::::::::::::::::,,::::,,,,,::::::,,,,:::::::::~:::::::::::
+.............................,,::::::::::~+8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDO8DD+NDDIODN+.?NDDDDDDDDDDDDDDDZ=:~~===+++++=====~~::,,,,,,::~~:~~::::::::::::,,,,,,:::,,,,,::::::,,,,,,,,,:::::::::::,,,,
+...........................,,::::::~:::::7DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD7DD7ODD=88D+,,.:ODDDDDDDDDDDDDD8O?:~~========~~~:::,,,,,,,::~~~:::::,::::::::,,,,,,:::::,::::~~:::,,,,,,,,,,::::::::::,,,,
+.....................,,,,,,::::~:::::::+8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D887DZ?DD~DDO,,,,,,,,~8DDDDDDDDDDDD7D~::~~===~~:::::::::::::::~~:::::::,,,,:::,::::::::::::::::::~::,,::::,,,,,,::::,,:,,,,,,
+.................,,,,::::::::~::::::+ZD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD$ID,ZDO+DI,,,:::,:,:,.:$DDDDD8DDDDZ,:~~~~~~:::::~~~~~~~~:::::::::::::,,,,,,,,:::::::::::::~~~~~~~:::::::::::,,,::::::,,,,,,
+...............,,,,:::~~:::::::::::ZDDDD8DDDDDDDDDDDDDDDDDDD8DDDDDDDDDDDDDDD$,78,7DO=D~,,::::::,::,,..:I888DDDD8:::::::::::::~~~~~~~::::::::::::::::,,,,,::::::::::,:::~~~~~~~::::::~:::::,:,,,:::,,,,,,
+.............,,,::::~~~~::::,:::,=DN88DDDDDDDDDDDDDDDDDDDDDD8ODDDDDDDDD8DN7:N+.N?,D8:$~:::~~~~~~~:::,,,,.$N8DN$,,,,,::::::~:::::~::::::::::::::::::,,::::::::::::::::::~~~~~~~::::::~~::::,,,::,,,:::,,,
+...........,,,::::~~~::::::,,:::7DDD8DDDDDDDDDDDDDDDDDDDDDDDDI8DDDDDDDDDDI8DD?.,Z77N$,::~~~~~~~~~~~::,,,,,:I?,,,,,,,,::::::::::::::::,,,,,:::::::,,,,,::::::,,::::::::::~~~~~~::::::~~~~~:::,,,,,,,,:,,,
+...........,,,:::~~~~::::::::::~DDDDDDDDDDDDDDDDDDDDDDDDDDDDDOIDDDDDDDD8~?DDDI.,~7,Z8:~~~~~~~~~~~~~~::,,,,,,,,,,,,,,,,::,,,,,,,,,,,,,,,,,,:,:::::::::,:::::,,,,:::::::::::~~::~::~::::~~~~::::,:,,,,,,,,
+,..........,,::~~~~~:::,::::::=8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD?DDDDDDD8,IDD8O,,,,,+7:~~~~~~~~~~~~~:::::::::,,,,,,,,,,,,,,,,,,.,,,,,,,,,,,,::::::::::,,,:::,.,,::::::::::::::~~~~~~:::::~~~::::,::::::,,
+.........,,,,::~~~~:::::::,:,+8DDDDDDDDDDDDDDDDDDDDDDDDDDDD8DO:,ODDDDDDO,IDDD8:,,,,::~~~~~~~~~:::::::::::::,,,,,,,,,,.,,....,..,..,,,,,,,,,::::::,,:,,,,,,:,::::::::::::::::::~~~:~~~::::::::::::::::::,
+.........,,,:::~~~:::::::::,:ODD8DDDDDDDDDDDDDDDDDDDDDDDDDDDD,,,=DDDDDD8,+D8DD+,,,:::~~~~~~~::::::::::::::,,.....:?7Z8DDD8$=,.:IODDDDDDO7=,,,:,+D8$:,:,,,,,,::::::::::::::::::~:::~~~~:::::::::::::::::,
+.........,,,:::~::::::::::::=DDDDDDDDDDDDDDDDDDDDDDDDDD8DDD7,,,,,8DDDDDD=,8DD88,:,::::::~~::::::::::::::,,,.,~7DDDDDDDDDDDD7+DDDDDDDDDDDDD8+,,=D8DDD+,:,~7Z,,,,:::::::::::,::::::::~~~:::::~~~~~~~~~::::
+.........,,,::::::::::::::,:$DDDDDDDDDDDDDDDDDDDDDDDDDDD8D=:I8NDZ8D8DDDD7ODD88ZI,:::::::::::::,,,,,,,,,,.~78DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD,7NDD8D+:,~DD8,,,,:::::::::::,:::::::::~::::::::::::~~~:::,
+,.,.......,::::,,,,::::::,,?D8DDDDDDDDDDDDDDDDDDDDDDDD8DDIIDDDDDD7ODDDDDD$D8D8Z??=,,,,,,,,,,,,,,,,,.:~IZ8DD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8ODDDDZ,~O8D8=,,,,:::::::,,::::::::::::::~::::::::~:~~~~::,
+.........,,:::::,,::::::::~OD8DDDDDDDDDDDDDDDDDDDDDDDDD88D8D8DDDDD+DDDDDD8DDDD88DDDDDO$I???I7Z88DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD?ODDD$::,,,:::::::::,,,:::::::,::::::::::::::~~~~~:::
+,.......,,,:::::::~~~::~::?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDOODDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDIDDD8,::,,,,:::::::::::::::::,,,,::::::::::::::::::::
+,.....,,,,,:::~::~~~~:::::ODDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD7?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD~,,,,,,,,:,::,,::::::::,,,,::,,:::::,,,,,:::::::::
+.....,,,,:::~~~~~~~~~:::,?8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8I8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D8,,,,,,::::,,:,,,:::::::,,,,ZI,,,:::,,,,,,,::::::::
+.....,,,,:::~~~~~~~:::::?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDIZNDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D,,,,,,:::::::,,,,:::::,,,,,87,,,:::,,,,,,,,:::::::
+,,,.,,,::~~~~~~~~====+7DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DD8$DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D?,,,::::::::,,,,,:::,,,,7DI,,,,:,,,,,,::::::::::
+,,,,,,::~~~+7ODDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=,,,:::+::,,,,,,,,,,,+DD~,,::,,,,,,,,,::,:::::
+,,,,:::~~=7DDDDDD8DDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8=,,,:,~N=,,,,,,,,,,,+8D7,,::::,,,,,,,,,,,,,:::
+,,::::::?8D8DDDDDDDDDDDDD8DDDDDDDDDDDDDDDDD$DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDOI:+OID=,,.,,,,,,,8DDZ,,,,:::::,,,,,,,,,,::::
+,::::::?DDDDDDDDDDDDDDDDDD??ODDDDDDDDDDDDD7ZDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD88D8:,,,,,,,,ID8DD,,,,,::::,:,,,,,,,,:::::
+::::::=ODDDDDDDD8DDDDDD8D?=~?DDDDDDDDDDDDD?DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDDD?.,,,,.,:ZDD8D?,,,,::::,,,,,,::,,,:::::
+:::::ZDDDDDDDDDDDDDDDDD8=~~~~+8DDDDDDDDDDI88DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8D8D8I,,~+I88D8O,,,,,,,::,,,,,,,,,,,::::::
+:::+8DDDDDDDDDDDDDDDDDD$:~~=~:~$DDDDDD8DO8D8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDOIZDDDD8DDD7,,,,,:,,,,,,,,,,,,,,:::::::
+::?DDDDDDDDDDDDDDDDDDDDZ:~~~~~~~DDDDDDDD?8DDDDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDODDDDDDD=.,,,,,,,,.,,,,,,,,,:::::::::
+::8DDDDDDDDDDDDDDDDDDDD8+~~~~~:~DDDDDDD$:7D8DDD8D$8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD?8DDZ,,,,,,,,,,,,,,,,,,,:::::::::::
+~=DDDDDDDDDDDDDDDDDDDDDD8~~~~::$DDDDDDDI:$8DDDD88?DDDDDDDDDDDDDDDDDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDDDDDDDDDDDDDDDDDDDDDDDD87NDDD78DDDDDDDDDDDDDDDDDDDDDDD8+:.,,,,,,,,,,,,,,,:,,::::~~~~::::
+~+DDDDDDDDDDDDDDDDDDDDDDD$~~~:+DDDDDDDDI:ODDDDDD8?DDDDDDDDDDDDDDDDDDD88ZDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8I8DDDDDDDDDDDDDDDDDDDDDDDD8=7ZOZ=8DDDDDDDDDDDDDDDDDDDDDDDDI,,,,,,,,,,,,,,,:::::::~~~~~~:::,
+~=DDDDDDDDDDDDDDDDDDDDDDDD8I~+ODDDDDDDO~=NDDDDDD8=DDDDDDDDDDDDDDDDDDDD87DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD$ZDDDDDDDDDDDDDDDDDDDDD$ZDZ,,,,,,,:ZDD$DDDDDDDDDDDDDDDDDD8+,,,,,,,,,,,:,,,,:::::::~~~~:::::,
+~8DDDDDDDDDDDDDDDDDDDDDDD8DZ8D88DDDDZ::7DD8DDDN?:DDDDDDDDDDDDDDDDDDDD$ZDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD?8DDDDDDDDDDDDDDDDDDDD8:,,,,,,,,,,,,~=+ID8DDDDDDDDDDDDD8D8=,,,,,,,,,,,,,:::::::::::::::::,,,
+~?8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDD8DO~:~DDDDDDD$,:DDDDDDDDDDDDDDDDDDDDIDDZZND8DDDDDDDDDDDDDDDDDDDDDDDDDDDDDZODDDDDDDDDDDDDDDD8D8$+:,,::,,,,,,:,,,::::+ODO$DD8DDDDDD8D8:::,,,::::,,,,,::::::::::::::::,,,
+~~=$DDDDDDDDDDDDDDDDDDDDDDDDDDDD8DDI:::?DDDDDD=,,DDDDDDDDDDDDDDDDDDO+DDDI,,?8D8DDDDDDDDDDDDDDDDDDDDDDDDDDD$8DDDDDDDDDDD8DD8DDD~,,,,,,,,,,,:::::::::::::::+DDDDDD88DO::,:::::::::::,:::::::::::::::::,,,
+:~:::ODDD8DDDDDDDDDDDDDDDDDDDDDDDD8O:::::D8DDDD::,ZDDDDDDDDDDDDDDD8O?DDDD?,::,~8DDDDDDDD8DDDDDDDD88DD8OZ7??+ODDDDDDDDDDDDDZO8N8,,,,,,,,,,,::::::::::::,,,,::++~??::~:,,:::::::::::::::::::::::::::::::,,
+:::::~+OD8DDDDDDDDDDDDDDDDDDDDDDDDDI:::::DD8DD$::,+DD8DDDDDDDDDDDD$$DD88D=,::,,,,~IZ8DDDDDDDDD8Z7=::::::::::?DDDDDDDDDDDDIODDD$,,,,,:::::::::::::::,,,,,,,::,,::,:::::::::,:::::::::::::::::::::::::::,,
+:,::::::?O8DDDDDDDDDDDDDDDDDDDDDDDD?:::::7DDDDI:::,IDDDDDDDDDDDD8+ZDDDDDO:::::::::::::::::::::::::::::::::::=DDDDDDDDDDD?D8D8D~,,,,,:::::::::::::::,,,,::::,::::::::::::::,::::::::::::::,,,,::::::::::,
+,,::::::,,:+I$O8DDDDDDDDDDDDDDDDDDD?:::::=8D8DO:,:,IDDDDDD8DD8DD=8DDDDDDD:::::::::~:~::::::::::::::::,,:::::+DDDDDDDDDDO8DDDDD:,,,,,:::::::::::::::,,::::::::::::::::::::,,:::::::::::,,,,,,,,,::::::::,
+,,,::,::::::::,,,:?8DDDDDDDDDDDDDDDI:::::,7DDDD:,::8DDDDDDD8D87?8DDDDDDDD?,:::::::::::::::::::::::::,,,:::::7DDDDDDDDDO78DDDDD,,,,::::::::,,,,::::,:::::,,.,:::::::::::::::,,::::::::,,,,,,,,,,:::::::,,
+,,::,,:::::::::,,,::8D8DDDDDDDDDDDDZ::::::~8DDD7,:,$DD8DDD8DD=ODDD8DDDDDDO::::::::::::::::::::::::::::::::::=8DDDDDD8$INDDDDD8,,,:::::::::::,,,,,,,,:::,,,.,,:::::::::::::,,,,,::::,,,,,,,,,,,,,,::~::,,
+,:,,::::::::::,:,,,,$DDDDDDDDDDDDDDD~,:::::ZDDD8::::DDDDDD877:IDDD8DDDDDDZ~,,::::::::::::::::::::::::::::::::8DDDDDDD?DD88DD8$::,::::::::::::::::::::,,,,:,::::::::::::,:::,,,,,:,,,,,,.,.,,,,,,:::::,,,
+::::::~~~~::$D+:::,,7DDDDDDDDDDDDDDN$,:,,::?DDDD$,:,7DDDDDDD?::=8DDDDDDDDDDO,::::,:::::::::::::::::::::,,,,,+DDDDDDDO:8DDDDDDD:,,:::::::::::::::::,,,,,::::::::::::::::,,,,,,,,,,,,,,,,....,,,,,,:::,,,,
+:::::~~::::IDD=,:,,,7DDDDDDDDDDDDD8DNI:::::=DD8DDI,:~8DDDDDZ::::::=8DDDDDDDDDI:,::,:::,,::::::::::::,,,,,,,,=DDDDDDN+::8DDDDDD+,,,:,::::::::::::,,,,,:::::::,,::::::::,,,,,,,,,,,,,,,,,..,,,,,,,,,::,,,,
+:::::::::::$DD$=:::~ODDDDDD8DDDDDDDDDD:~::::DDDDDO,:,7DDDDD$:::~::~:=ODDDDDD8DD~,,:::::::::::::::::,:::,,::,~8DDDDD$:~?D8DDDDDDO+:::~:::::::::,,,,,::::::::,,,,,::::,,,,,,,,,,::::,,,,,,,,,,,,:,,,,,,,,,
+:::::~:::::7DDDDDD8D8DDDDDDDDD88~8ODDDI:~~~~78DD8D+~:ZDDDDDDI~~~~~~::ZDDDDDDDDDDZ::::::::::::::::::::::::::,7DDDDDDZ=+8DDD8D8DDDD~~:~~~~~::::::::::::::::::,,,,,::::::,,,,,,,::::::::,,,::::,,,,,,,,,,,,
+,,::::::::::7DDDDDDDDDDDD8DD8D$++?8D8DD$??????$DD88~=8DDDDDDDZ=:~~~:+DDDDDDDDD8D8+~~~~~~~~=~~~::~~~:::~~~~~7DDDDDDDDD8?I7Z8DO?++====~~~~~~~~~~~~::::::::::::::,:,::::,,,,,,,,:::::,,,,,,::::::,,,,,,,,,,
+,,::~~:::::~~+8DDDDDDDDDDDD8ZII7I?ODD8DD$?????++??~~8DDDDD8DDDZ~==~=~+$$I7$$7?=+============~~~~===========ODDDDDDDDDNI=++=+=++++=============~=~~~~:::::::::::::,::,,,,,,:,::::::,,,,,,:::::,,,,,,,,,,,
+,,::~~~:::::~~~:~+?II77???+++==~~::=$ODOZ++++====~~:8DDDDDI:+?~~~~~~=~==========~~~~~~:::::::::::::::~~~~~~~~=+?+===~::::::::::::::::~~~~:~~~~~~~~~::~~~::::::::::::,,,,,,,,::::,,,,,,,
+END_UNICORN
+
+color_echo '0;33' "$unicorn"
+
+}
+
+# per Andrey, I am (g)root.
+function g_root () {
+    read -r -d '' groot <<'END_GROOT'
+     .^. .  _
+    /: ||`\/ \~  ,
+  , [   &    / \ y'
+ {v':   `\   / `&~-,
+'y. '    |`   .  ' /
+ \   '  .       , y
+ v .        '     v
+ V  .~.      .~.  V
+ : (  0)    (  0) :
+  i `'`      `'` j
+   i     __    ,j
+    `%`~....~'&
+ <~o' /  \/` \-s,
+  o.~'.  )(  r  .o ,.
+ o',  %``\/``& : 'bF
+d', ,ri.~~-~.ri , +h
+`oso' d`~..~`b 'sos`
+     d`+ II +`b
+     i_:_yi_;_y    I am g root.
+END_GROOT
+
+    # print leading spaces to align groot's head due to the HEREDOC messing it up
+    color_echo '0;33' "     $groot"
+}
+
+# per Erik, It's a trap!
+function g_akbar () {
+    read -r -d '' akbar <<'END_AKBAR'
+. . . . . . . . . . . . . . . . _,,,--~~~~~~~~--,_
+. . . . . . . . . . . . . . ,-' : : : :::: :::: :: : : : : :º '-, ITS A TRAP!
+. . . . . . . . . . . . .,-' :: : : :::: :::: :::: :::: : : :o : '-,
+. . . . . . . . . . . ,-' :: ::: :: : : :: :::: :::: :: : : : : :O '-,
+. . . . . . . . . .,-' : :: :: :: :: :: : : : : : , : : :º :::: :::: ::';
+. . . . . . . . .,-' / / : :: :: :: :: : : :::: :::-, ;; ;; ;; ;; ;; ;; ;\
+. . . . . . . . /,-',' :: : : : : : : : : :: :: :: : '-, ;; ;; ;; ;; ;; ;;|
+. . . . . . . /,',-' :: :: :: :: :: :: :: : ::_,-~~,_'-, ;; ;; ;; ;; |
+. . . . . _/ :,' :/ :: :: :: : : :: :: _,-'/ : ,-';'-'''''~-, ;; ;; ;;,'
+. . . ,-' / : : : : : : ,-''' : : :,--'' :|| /,-'-'--'''__,''' \ ;; ;,-'/
+. . . \ :/,, : : : _,-' --,,_ : : \ :\ ||/ /,-'-'x### ::\ \ ;;/
+. . . . \/ /---'''' : \ #\ : :\ : : \ :\ \| | : (O##º : :/ /-''
+. . . . /,'____ : :\ '-#\ : \, : :\ :\ \ \ : '-,___,-',-`-,,
+. . . . ' ) : : : :''''--,,--,,,,,,¯ \ \ :: ::--,,_''-,,'''¯ :'- :'-,
+. . . . .) : : : : : : ,, : ''''~~~~' \ :: :: :: :'''''¯ :: ,-' :,/\
+. . . . .\,/ /|\\| | :/ / : : : : : : : ,'-, :: :: :: :: ::,--'' :,-' \ \
+. . . . .\\'|\\ \|/ '/ / :: :_--,, : , | )'; :: :: :: :,-'' : ,-' : : :\ \,
+. . . ./¯ :| \ |\ : |/\ :: ::----, :\/ :|/ :: :: ,-'' : :,-' : : : : : : ''-,,
+. . ..| : : :/ ''-(, :: :: :: '''''~,,,,,'' :: ,-'' : :,-' : : : : : : : : :,-'''\\
+. ,-' : : : | : : '') : : :¯''''~-,: : ,--''' : :,-'' : : : : : : : : : ,-' :¯'''''-,_ .
+./ : : : : :'-, :: | :: :: :: _,,-''''¯ : ,--'' : : : : : : : : : : : / : : : : : : :''-,
+/ : : : : : -, :¯'''''''''''¯ : : _,,-~'' : : : : : : : : : : : : : :| : : : : : : : : :
+: : : : : : : :¯''~~~~~~''' : : : : : : : : : : : : : : : : : : | : : : : : : : : :
+END_AKBAR
+
+    color_echo '0;33' "$akbar"
+}
+
+
+#### MAIN ####
+
+# print the help and usage information
+function _usage () {
+    echo ""
+
+    color_echo yellow "The g script is designed to help with the xERP workflow and some common git problems."
+
+    echo ""
+
+    echo "Usage: g <command> <opts/args>"
+    echo "Author: Harrison Katz <hjkatz03@gmail.com>"
+    echo "Maintained By: Kirk Bauer <kirk@merchlogix.com>"
+    echo "Confluence: https://neadwerx.atlassian.net/wiki/x/iA3DAQ"
+
+    echo ""
+
+    color_echo yellow "Git Commands (changed): add additional arguments or strategies to base git commands, see git help <command>"
+    echo "  pull  : pull changes into your branch using the --rebase strategy"
+    echo "  merge : always use --no-ff, always use origin/<source> for the source branch"
+
+    echo ""
+
+    color_echo yellow "G Commands (new):"
+    echo "  update         : update your current branch work with upstream changes"
+    echo "  sync           : merge in upstream changes from the current branch's 'develop' branch (version for bug, master for feature)"
+    echo "  prune          : update/prune all remote references, then delete branches missing from upstream that are still tracking"
+    echo "  fresh          : fetch, stash, prune, then land on master, ready to begin anew"
+    echo "  branch-status  : branch-status [branch|all]"
+    echo "                 : print the branch status with respect to its upstream; all will print all branch status information"
+    echo "  stash-status   : print the stash status"
+    echo "  diff-branch    : diff-branch [author]"
+    echo "                 : log all commits [by author] that were committed to the current branch"
+    echo "  xo             : xo <issue>"
+    echo "                 : checkout the branch associated with the JIRA <issue>"
+    echo "  new-bug        : new-bug [<version/epic>] [<summary...>]"
+    echo "                 : create a new bug in JIRA, Self-Allocate the bug, then checkout the branch to begin working"
+    echo "  co-feature     : co-feature <issue>"
+    echo "                 : checkout a new branch for a feature based off of the issue information"
+    echo "  co-date        : co-date <YYYY-MM-DD>"
+    echo "                 : checkout code as of a specific date, specified in ISO format"
+    echo "  co-bug         : co-bug <issue>"
+    echo "                 : checkout a new branch for a bug (or hotfix) based off of the issue information"
+    echo "  move-bug       : move-bug <version>"
+    echo "                 : move the current bug branch from its current version to the new <version> given"
+#    echo "  rebase-feature : rebase-feature <feature_issue> onto <version>"
+#    echo "                 : rebase the given feature from master onto the given version in prep for feature versioning"
+#    echo "  rebase-bug     : rebase the current bug branch onto the upstream version HEAD to iron out conflicts"
+    echo "  pr-bug         : create a new pull request for the current bug branch"
+#    echo "  pr-accept      : pr-accept <id...>"
+#    echo "                 : for each id given, approve, checkout, rebase, fix conflicts (if any), pr merge"
+#    echo "  merge-up       : merge-up <start_version>"
+#    echo "                 : merge all version branches up towards master in prep for a release (admin only)"
+#    echo "  rerere-train   : train your local rerere cache based on all merges from your current branch to its branch point"
+    echo "  clone-bb       : clone-bb <repo>"
+    echo "                 : shorthand for \`git clone git@bitbucket.org:neadwerx/<repo>\`"
+#    echo "  fdiff          : fdiff <issue>"
+#    echo "                 : compare commits across a whole feature and writes to .feature_diff.out"
+    echo "  version        : print the version information"
+    echo "  help           : print this message"
+
+    exit 1
+}
+
+# All hail the "g" script!
+function g () {
+    # grab the command
+    command="$1"
+    shift || true
+
+    # switch on the command to decide what to do
+    case $command in
+        help|halp|usage|"")
+            _usage # exits
+            ;;
+        version)
+            echo $_VERSION
+            ;;
+        clone-bb)
+            g_clone_bb "$@"
+            ;;
+        pull)
+            exit_unless_git
+            g_pull "$@"
+            ;;
+        merge)
+            exit_unless_git
+            g_merge "$@"
+            ;;
+        update)
+            exit_unless_git
+            g_update
+            ;;
+        sync|sinc|sink|synk)
+            exit_unless_git
+            g_sync
+            ;;
+        prune)
+            exit_unless_git
+            g_prune
+            ;;
+        fresh|freshy|freshi|freshen)
+            exit_unless_git
+            g_fresh
+            ;;
+        branch-status)
+            exit_unless_git
+            g_branch_status "$@"
+            ;;
+        stash-status)
+            exit_unless_git
+            g_stash_status "$@"
+            ;;
+        diff-branch)
+            exit_unless_git
+            g_diff_branch "$@"
+            ;;
+        x?(o))
+            exit_unless_git
+            g_xo "$1"
+            ;;
+        new-bug)
+            exit_unless_git
+            g_new_bug "$@"
+            ;;
+        co-date|checkout-date)
+            exit_unless_git
+            g_co_by_date "$@"
+            ;;
+        co-bug|co-hotfix|checkout-bug|checkout-hotfix)
+            exit_unless_git
+            g_co_bug "$@"
+            ;;
+        co-feature|checkout-feature)
+            exit_unless_git
+            g_co_feature "$@"
+            ;;
+        move-bug|move-hotfix|mv-bug|mv-hotfix)
+            exit_unless_git
+            g_move_bug "$@"
+            ;;
+        move-feature|mv-feature)
+            exit_unless_git
+            g_move_feature "$@"
+            ;;
+        internal-automated-rebase)
+            exit_unless_git
+            g_internal_automated_rebase "$@"
+            ;;
+        manual-rebase)
+            exit_unless_git
+            g_manual_rebase "$@"
+            ;;
+        dedup-rebase)
+            exit_unless_git
+            g_dedup_rebase "$@"
+            ;;
+        rebase-feature)
+            exit_unless_git
+            g_rebase_feature "$@"
+            ;;
+        rebase-bug|rebase-hotfix)
+            exit_unless_git
+            g_rebase_bug
+            ;;
+        pr-bug|pr-hotfix)
+            exit_unless_git
+            g_pr_bug
+            ;;
+        pr-accept)
+            exit_unless_git
+            g_pr_accept "$@"
+            ;;
+        merge-up)
+            exit_unless_git
+            g_merge_up "$@"
+            ;;
+        rerere-train)
+            exit_unless_git
+            g_rerere_train "$@"
+            ;;
+        fdiff)
+            exit_unless_git
+            g_fdiff "$@"
+            ;;
+        # easter eggs
+        xo+(xo))
+            g_xoxo
+            ;;
+        root)
+            g_root
+            ;;
+        unicorn)
+            g_unicorn
+            ;;
+        trap|akbar|admiral)
+            g_akbar
+            ;;
+        *) # default to pass through to git
+            _git $command "$@"
+            ;;
+    esac
+
+    retval=$?
+
+    check_sync_status
+
+    return $retval
+}
+
+# go!
+g "$@"
+
+exit $?

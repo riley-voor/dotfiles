@@ -1,0 +1,50 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks to make sure that yardoc is up-to-date and completes
+# without any warnings or errors if there are any staged changes to the qa
+# directory.
+
+# MAIN PROGRAM
+
+get_files_to_check files '^qa/' 'AMR'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# go to the qa directory
+cd qa/
+
+# run yardoc and capture the output
+output=`bundle exec yardoc`
+
+# return to root
+cd ../
+
+# git a list of changed files
+diff=`git --no-pager diff --name-only`
+
+# fail if there is a warn or error message
+if echo "$output" | grep -q -i -P '(?:\[warn\]|\[error\])' ; then
+    hook_error "$(
+        echo "$output"
+        color_echo red "Yardoc failed to complete cleanly, please fix the errors."
+    )"
+fi
+
+# fail if there is less than 100% documentation coverage
+if ! echo "$output" | grep -q -i -P '^ 100[.]00% documented$' ; then
+    hook_error "$(
+        echo "$output"
+        color_echo red "Yardoc reported less than 100% documentation coverage, please document your changes."
+    )"
+fi
+
+hook_exit

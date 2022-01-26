@@ -1,0 +1,129 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script ensures that all ajax calls found in javascript files
+# follow the following syntax:
+#
+#   .[AJAX_CALL]( ... )
+#      ...
+#      .fail( validate_json_response, ... )
+#      ...;
+#
+# Where an ajax call is one of the following:
+#   - ajax
+#   - get
+#   - post
+#   - put
+#   - delete
+
+# MAIN PROGRAM
+
+# match .js but not .min.js
+get_files_to_check files '(?!-min)[\w-]{4}\.js$' 'AMCR'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# go through each file and parse them line by line
+# use a state machine to parse ajax blocks
+# the states can be the following:
+#     - searching :: looking for an ajax block
+#     - ajax      :: found an ajax call, looking for a fail
+#                    before the next semicolon
+#     - semicolon :: should find a semi-colon before going back to searching
+#     - skip_file :: skips this file
+#
+for file in $files ; do
+    # reset the state to searching
+    state='searching'
+
+    # read the file line by line
+    line_number=-1
+    while read line ; do
+    line_number=$((line_number + 1))
+    # save on whitespace, no indent
+    case $state in
+        searching)
+            # test if line is the start of an ajax call
+            regex="(\\$|jQuery)\.(ajax|get|post|put|delete)\("
+            if [[ "$line" =~ $regex ]] ; then
+                regex="//\s*not\s*api\s*$"
+                if [[ ! "$line" =~ $regex ]] ; then
+                    state='ajax'
+                    ajax_line_number=$line_number
+                    ajax_line=$line
+                    continue
+                fi
+            fi
+
+            ;;
+        ajax)
+            # test if line has the fail call
+            regex="\.fail\(\s+"
+            if [[ "$line" =~ $regex ]] ; then
+                # test if fail call matches what's expected
+                regex="\.fail\(\s+validate_json_response"
+                if [[ ! "$line" =~ $regex ]] ; then
+                    hook_error "$(
+                        color_echo red "Missing validate_json_response as first function to '.fail' call in file '$file'"
+                        color_echo yellow "Near line ($ajax_line_number): $ajax_line"
+                    )"
+
+                    state='skip_file'
+                    continue
+                fi
+
+                state='semicolon'
+
+                # check if this line is the last in the ajax block
+                regex=";$"
+                if [[ "$line" =~ $regex ]] ; then
+                    state='searching'
+                fi
+
+                continue
+            fi
+
+            # test if we see a semicolon without the fail call
+            regex=";$"
+            if [[ "$line" =~ $regex ]] ; then
+                hook_error "$(
+                    color_echo red "Missing 'fail' call in ajax block in file '$file'"
+                    color_echo yellow "Near line ($ajax_line_number): $ajax_line"
+                    echo "Hint: If this is not an api ajax call, add a comment at the end of the line '// not api' to allow this call to pass."
+                )"
+
+                state='skip_file'
+                continue
+            fi
+            ;;
+        semicolon)
+            # test if line has a semicolon ending the ajax block
+            regex=";$"
+            if [[ "$line" =~ $regex ]] ; then
+                state='searching'
+                continue
+            fi
+            ;;
+        skip_file)
+            continue
+            ;;
+        *)
+            color_echo red "Show this to kirk@merchlogix.com"
+            color_echo red "INVALID STATE: $state"
+            color_echo yellow "File: $file"
+            color_echo yellow "Near line ($ajax_line_number): $ajax_line"
+            hook_fail
+            ;;
+    esac
+    done < $file
+done
+
+hook_exit

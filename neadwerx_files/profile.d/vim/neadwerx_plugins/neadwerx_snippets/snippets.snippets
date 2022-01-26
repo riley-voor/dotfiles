@@ -1,0 +1,15 @@
+snippet snip "Create a new snippet" b
+	snippet ${1:trigger}
+		${0}
+	endsnippet
+endsnippet
+
+snippet msnip "Create a new snippet with a description" b
+	snippet ${1:trigger} ${2:description}
+		${0}
+	endsnippet
+endsnippet
+
+snippet $ "Insert a placeholder" i
+	${${1:1}:${0:text}}
+endsnippet

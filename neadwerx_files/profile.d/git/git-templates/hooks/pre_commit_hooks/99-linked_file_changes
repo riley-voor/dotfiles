@@ -1,0 +1,29 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# MAIN PROGRAM
+
+get_files_to_check quill_global_settings 'common/js/quill_global_settings.js' 'AMCR'
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+if [ -n "$quill_global_settings" ] ; then
+    get_files_to_check quill_global_settings_ie 'common/js/quill_global_settings_ie.js' 'AMCR'
+    if [[ ! -e "common/js/quill_global_settings_ie.js" ]];
+    then
+        hook_info "$(
+            color_echo white "File: common/js/quill_global_settings_ie.js does not exist in this branch"
+            color_echo green "Marking as successful"
+        )"
+    elif [ -z "$quill_global_settings_ie" ] ; then
+        hook_error "$(
+            color_echo red "You modified common/js/quill_global_settings.js but not common/js/quill_global_settings_ie.js"
+            color_echo yellow "Are you sure this is what you meant to do?"
+        )"
+    fi
+fi
+
+hook_exit

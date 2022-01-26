@@ -1,0 +1,142 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+exit_if_commit_hooks_should_not_run
+
+# MAIN PROGRAM
+
+# continue
+echo "-PRE-COMMIT HOOKS---------------------------------------------------------------------------------"
+
+# cannot commit to master or version branches
+# TODO: temporary, figure out how to check for overrides
+# current_branch=`git rev-parse --abbrev-ref HEAD`
+# if [[ $current_branch == "master" ]] || [[ $current_branch =~ ^v ]] ; then
+#     color_echo red "Cannot commit to master or version branches directly!"
+#     exit 1
+# fi
+
+# get the scripts to run in number order highest to lowest
+scripts=`ls .git/hooks/pre_commit_hooks/ | sort -n -r`
+
+# create the commit hooks record file, if needed
+if [[ ! -f $GIT_DIR/$_commit_hook_enforce_file ]] ; then
+    > $GIT_DIR/$_commit_hook_enforce_file
+fi
+
+for script in ${scripts[@]} ; do
+    # allow for "redo" with a continue without setting next_file
+    # [see: https://unix.stackexchange.com/questions/282804/repeating-current-loop-iteration-if-some-condition-is-met-bash]
+    next_file=false
+    while [[ "$next_file" != "true" ]] ; do
+        # clear the commit hook hash file and record variables
+        # before running the commit hook
+        > $GIT_DIR/$_commit_hook_hash_file
+        commit_hook_hash=""
+        override=""
+        record=""
+
+        # run the commit hook
+        execute_script="./.git/hooks/pre_commit_hooks/$script"
+        $execute_script
+
+        # get the result and check the return
+        result="$?"
+        if [[ $result == 0 ]] ; then
+            # success
+            color_echo green "Success: $script"
+        elif [[ $result == 3 ]] ; then
+            # internal error
+            color_echo yellow "Error: $script"
+            exit 3
+        elif [[ $result == 2 ]] ; then
+            # commit hook skip due to matching recorded hashes
+            # get the commit record
+            # This happens if this hook had already been run agaist that commit
+            # and that hook has decided this hook for this commit can be skipped
+            commit_record=`grep -P "^$script:" $GIT_DIR/$_commit_hook_enforce_file`
+            prev_override=`echo "$commit_record" | cut -d':' -f3-`
+
+            # if there was a prev override, then the prev commit hook failed
+            if [[ -n "$prev_override" ]] ; then
+                # check to see if the user wishes to re-use
+                # this commit hook result and override message, or
+                # if they'd like to re-do the commit hook
+                # manually color the sentence
+                echo ""
+                echo -e "Commit hook \033[1;33m$script\033[0m was previously overriden with reason:"
+                echo -e "\t\033[1;32m$prev_override\033[0m"
+                echo ""
+                ask_with_timeout "3" "y" "Would you like to re-use this override?"
+
+                if [[ "$ANSWER" != "y" ]] ; then
+                    # clear the record
+                    sed -i "/^$script:/d" $GIT_DIR/$_commit_hook_enforce_file
+
+                    # re-do this commit hook
+                    next_file=false
+                    continue
+                else
+                    # skip this commit hook and accept its results
+                    color_echo yellow "Override: $script: $prev_override"
+                    next_file=true
+                    continue
+                fi
+            else
+                # there is no previous override, so the previous commit hook passed, pass this one too
+                color_echo green "Success: $script"
+            fi
+        else
+            echo ""
+            color_echo red "Failed: $script"
+
+            # check to see if the user wishes to override these failures (shame on them...)
+            echo ""
+            ask "Do you wish to override this commit hook and continue anyways?"
+
+            if [[ $ANSWER != "y" ]] ; then
+                color_echo red "Aborting commit hooks at user's request!"
+                exit 1
+            else
+                override=""
+                # save reason for override
+                q "Override Reason:"
+                override="$ANSWER"
+
+                # ensure the override is filled out
+                while [[ -z "$override" ]] ; do
+                    color_echo red "Please provide an override reason!"
+                    q "Override Reason:"
+                    override="$ANSWER"
+                done
+
+                echo "-RESUMING-$_commit_error_sep"
+                color_echo yellow "Override: $script: $override"
+            fi
+        fi
+
+        # get the previous commit hook hash value
+        commit_hook_hash=`cat $GIT_DIR/$_commit_hook_hash_file | tr -d '\n'`
+
+        # build our commit hook record
+        record="$script:$commit_hook_hash:$override"
+
+        # replace or add the commit hook record
+        if grep -q -P "^$script:" $GIT_DIR/$_commit_hook_enforce_file ; then
+            sed -i "s|^$script:.*|$record|" $GIT_DIR/$_commit_hook_enforce_file
+        else
+            echo "$record" >> $GIT_DIR/$_commit_hook_enforce_file
+        fi
+
+        # continue on to the next file
+        next_file=true
+    done
+done
+
+# hand-off to prepare-commit-msg enforcement
+touch $GIT_DIR/$_commit_hook_enforce_file
+
+# all done!
+exit 0

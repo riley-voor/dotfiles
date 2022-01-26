@@ -1,0 +1,244 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script parses the docblocks for any controller files that have been touched,
+# it ensures that each controller only has uniquely named routes per http method,
+# as defined by the docblock
+
+# MAIN PROGRAM
+
+get_files_to_check files 'api/controllers' 'AMCR'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# go through each file and parse them line by line
+# use a state machine to parse docblocks
+# the states can be the following:
+#     - searching            :: looking for a docblock
+#     - docblock             :: inside a docblock
+#     - expecting_definition :: the first line after a docblock
+#                               should be a function or class definition
+#     - skip_file            :: skip the rest of the file
+#
+# if I run into a class or function definition without seeing a docblock
+# directly above, then assume that it is missing a docblock and therefore
+# an error
+for file in $files ; do
+    # reset the state to searching
+    state='searching'
+
+    # Currently we are only using the following http methods:
+    #     - GET
+    #     - POST
+    #     - PUT
+    #     - DELETE
+    #
+    # So we will create hashes for each of these, per file, and check against them
+    # in the docblocks
+
+    # To clear a hash, unset then redeclare.
+    unset GET
+    unset POST
+    unset PUT
+    unset DELETE
+
+    declare -A GET
+    declare -A POST
+    declare -A PUT
+    declare -A DELETE
+
+    # read the file line by line
+    line_number=-1
+    while read line ; do
+    line_number=$((line_number + 1))
+    # save on whitespace, no indent
+    case $state in
+        searching)
+            # test if line is a function definition
+            regex="function[[:space:]]+[[:alpha:]]+\("
+            if [[ "$line" =~ $regex ]] ; then
+                hook_error "$(
+                    color_echo red "Missing docblock for function definition in file '$file'"
+                    color_echo yellow "Near line ($line_number): $line"
+                )"
+                state='skip_file'
+                continue
+            fi
+
+            # test if line is the start of a docblock
+            regex="/\*\*"
+            if [[ "$line" =~ $regex ]] ; then
+                state='docblock'
+                continue
+            fi
+
+            ;;
+        docblock)
+            # test if line is the end of a docblock
+            regex="\*/"
+            if [[ "$line" =~ $regex ]] ; then
+                state='expecting_definition'
+                continue
+            fi
+
+            # test if line is the method
+            case $line in
+                *@GET*)
+                    # found a method, awk out the name
+                    route_name=`echo "$line" | tr -d '\n' | awk '{ print $3 }'`
+
+                    # test to see if this route already exists
+                    if [ ${GET[$route_name]} ] ; then
+                        hook_error "$(
+                            color_echo red "Found duplicate route definition in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # test to see if route resource matches controller.
+                    # @GET /<resource>/{extra}/{stuff}/here
+                    route_resource=`echo "$route_name" | sed -E 's#^/([A-Za-z0-9_-]+)/?.*#\1#'`
+                    if [[ "$file" != "api/controllers/$route_resource.php" ]] ; then
+                        hook_error "$(
+                            color_echo red "Found incorrect route name for resource in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # add the route to the correct hash
+                    GET[$route_name]=0;
+                    ;;
+                *@POST*)
+                    # found a method, awk out the name
+                    route_name=`echo "$line" | tr -d '\n' | awk '{ print $3 }'`
+
+                    # test to see if this route already exists
+                    if [ ${POST[$route_name]} ] ; then
+                        hook_error "$(
+                            color_echo red "Found duplicate route definition in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # test to see if route resource matches controller.
+                    # @GET /<resource>/{extra}/{stuff}/here
+                    route_resource=`echo "$route_name" | sed -E 's#^/([A-Za-z0-9_-]+)/?.*#\1#'`
+                    if [[ "$file" != "api/controllers/$route_resource.php" ]] ; then
+                        hook_error "$(
+                            color_echo red "Found incorrect route name for resource in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # add the route to the correct hash
+                    POST[$route_name]=0;
+                    ;;
+                *@PUT*)
+                    # found a method, awk out the name
+                    route_name=`echo "$line" | tr -d '\n' | awk '{ print $3 }'`
+
+                    # test to see if this route already exists
+                    if [ ${PUT[$route_name]} ] ; then
+                        hook_error "$(
+                            color_echo red "Found duplicate route definition in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # test to see if route resource matches controller.
+                    # @GET /<resource>/{extra}/{stuff}/here
+                    route_resource=`echo "$route_name" | sed -E 's#^/([A-Za-z0-9_-]+)/?.*#\1#'`
+                    if [[ "$file" != "api/controllers/$route_resource.php" ]] ; then
+                        hook_error "$(
+                            color_echo red "Found incorrect route name for resource in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # add the route to the correct hash
+                    PUT[$route_name]=0;
+                    ;;
+                *@DELETE*)
+                    # found a method, awk out the name
+                    route_name=`echo "$line" | tr -d '\n' | awk '{ print $3 }'`
+
+                    # test to see if this route already exists
+                    if [ ${DELETE[$route_name]} ] ; then
+                        hook_error "$(
+                            color_echo red "Found duplicate route definition in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # test to see if route resource matches controller.
+                    # @GET /<resource>/{extra}/{stuff}/here
+                    route_resource=`echo "$route_name" | sed -E 's#^/([A-Za-z0-9_-]+)/?.*#\1#'`
+                    if [[ "$file" != "api/controllers/$route_resource.php" ]] ; then
+                        hook_error "$(
+                            color_echo red "Found incorrect route name for resource in file: $file"
+                            color_echo yellow "Near line ($line_number): $line"
+                        )"
+                        state='skip_file'
+                        continue
+                    fi
+
+                    # add the route to the correct hash
+                    DELETE[$route_name]=0;
+                    ;;
+                *)
+                    ;;
+            esac
+            ;;
+        expecting_definition)
+            # test if line is a definition
+            regex="(class|function)"
+            if [[ "$line" =~ $regex ]] ; then
+                state='searching'
+                continue
+            fi
+
+            # error if nothing matched
+            hook_error "$(
+                color_echo red "Expected function definition after docblock in file '$file'"
+                color_echo yellow "Near line ($line_number): $line"
+            )"
+            state='skip_file'
+            continue
+            ;;
+        skip_file)
+            continue
+            ;;
+        *)
+            color_echo red "Show this to kirk@merchlogix.com"
+            color_echo red "INVALID STATE: $state"
+            color_echo yellow "File: $file"
+            color_echo yellow "Near line ($line_number): $line"
+            hook_fail
+            ;;
+    esac
+    done < $file
+done
+
+hook_exit

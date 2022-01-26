@@ -1,0 +1,53 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+
+# This script auto sorts the globals/exported
+# comments sections in edited js files.
+
+get_files_to_check files '.*[.]js$' 'AMCR'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+#Takes in section to be sorted in a certain file
+#Params:
+#   $1 = section, either: "globals" or "exported"
+#   $2 = file to be sorted
+#Returns:
+#   0 if sorted successfully
+#   1 if couldn't find section
+sort_section () {
+    section=$1
+    file=$2
+
+    #check to see if the comment section globals/exported is in the file at all
+    if grep -q "\/\* $section" "$file"; then
+
+        #Determine what line # the section starts on and how many lines it is
+        #This will provide the "range" of lines to actually do the sort on
+        start_line=$(ag "\/\* $section" $file | cut -f1 -d:)
+        end_line=$(ag "\*\/" $file | cut -f1 -d: | awk -v start=$start_line '$0>start{print;exit}')
+        let section_length=$end_line-$start_line-1
+        
+        #1. print the lines of the file BEFORE the sort starts (start of file to line <start_line>)
+        #2. print <section_length> number of lines in sorted order
+        #3. print the rest of the file
+        #Put all this back into the file - only the sorted sections are overwritten w any real changes
+        (head -n $start_line; head -n $section_length | sort ; cat ) < $file 1<> $file 2> /dev/null
+        git add -- $file
+        return 0
+    fi
+    return 1
+}
+
+for file in ${files[@]} ; do
+    sort_section 'globals' $file
+    sort_section 'exported' $file
+done
+
+hook_exit

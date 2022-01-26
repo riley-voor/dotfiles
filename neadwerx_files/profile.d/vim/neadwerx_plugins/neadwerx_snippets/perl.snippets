@@ -1,0 +1,372 @@
+# TODO
+snippet TODO "Create a TODO comment" b
+# TODO ${1:description} (`git config user.name`: `date +"%Y-%m-%d"`)
+endsnippet
+
+snippet modules "NeadWerx Modules / Skeleton for modules"
+#### NEADWERX MODULES ####
+use Carp;
+use Readonly;
+use Perl6::Export::Attrs;
+use English qw( -no_match_vars );
+use Fatal qw( open );
+use Params::Validate qw( :all );
+
+#### INTERNAL MODULES ####
+${0:${VISUAL}}
+
+#### CPAN MODULES ####
+use Data::Dumper;
+
+#### READONLYS ####
+Readonly my $FALSE => 0;
+Readonly my $TRUE  => 1;
+endsnippet
+
+snippet package "Skeleton for a new package/module" b
+package ${1:MyModule};
+${0}
+#### STRICTURES ####
+use strict;
+use warnings;
+use feature qw( say );
+
+#### NEADWERX MODULES ####
+use Carp;
+use Readonly;
+use Perl6::Export::Attrs;
+use English qw( -no_match_vars );
+use Fatal qw( open );
+use Params::Validate qw( :all );
+
+#### INTERNAL MODULES ####
+
+#### CPAN MODULES ####
+use Data::Dumper;
+
+#### READONLYS ####
+Readonly my $FALSE => 0;
+Readonly my $TRUE  => 1;
+
+#### PUBLIC SUBROUTINES ####
+
+
+#### PRIVATE SUBROUTINES ####
+
+
+1;
+endsnippet
+
+snippet script "Skeleton for a new script" b
+#!/usr/bin/perl
+
+#### STRICTURES ####
+use strict;
+use warnings;
+use feature qw( say );
+
+#### NEADWERX MODULES ####
+use Carp;
+use Readonly;
+use Perl6::Export::Attrs;
+use English qw( -no_match_vars );
+use Fatal qw( open );
+use Params::Validate qw( :all );
+
+#### INTERNAL MODULES ####
+
+#### CPAN MODULES ####
+use Data::Dumper;
+use Getopt::Long;
+
+#### READONLYS ####
+Readonly my $FALSE => 0;
+Readonly my $TRUE  => 1;
+
+#### PRIVATE SUBROUTINES ####
+
+# Prints the message and usage information.
+# Params   : message (string)
+# Comments : Exits with status code -1
+sub _usage($)
+{
+    my ( $message ) = validate_pos( @_, { type => SCALAR, default => '' } );
+
+    say "$message";
+    say "Usage: $PROGRAM_NAME --arg <ARG>";
+
+    exit -1;
+}
+
+# Parses the command line for arguments and options.
+sub _parse_command_line
+{
+    my $show_help = $FALSE;
+
+	# defaults
+	my $arg;
+
+    GetOptions(
+        'arg=s'  => \$arg,
+        'h|help' => \$show_help
+    ) or _usage( 'Failed to parse command line arguments.' );
+
+    if( $show_help == $TRUE )
+    {
+        _usage( '' );
+    }
+
+    unless( $arg )
+    {
+        _usage( 'Missing required arg.' );
+    }
+
+    return;
+}
+
+#### MAIN PROGRAM ####
+_parse_command_line();
+
+exit( 0 );
+${0}
+
+endsnippet
+
+snippet #! "Hash-bang for perl" b
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use feature qw( say );
+endsnippet
+
+snippet extlibs "CPAN Packages" b
+use DBI;
+use Data::Dumper;
+endsnippet
+
+snippet findbin "FindBin for other dirs" b
+use FindBin;
+use lib "$FindBin::Bin";
+endsnippet
+
+snippet neadlibs "Nead Werx Packages" b
+use Util;
+use Db_lib;
+use Email_lib;
+use Constants;
+use Translate;
+use Validate_lib;
+endsnippet
+
+snippet usage "Util.pm usage block" b
+my $args = 	{
+				${5:${1:option} => { name => '${2:option_name}', type => '${3:type}' },${4}}
+			};
+
+my $opts = process_args( $args ); `!p import re
+pattern = r"\s*(\w*)\s*=>\s*{\s*\w*\s*=>\s*'(\w*)'.*"
+replacement = r"\nmy $\2 = $opts->{'\1'};"
+snip += re.sub( pattern, replacement, t[5] )`
+${0}
+endsnippet
+
+# Dump
+snippet dump "Create a Data::Dumper logging statement" b
+print Dumper( $${1:variable} );
+endsnippet
+
+# Comment
+snippet comment
+##${1/./#/g}##
+# ${1} #
+##${1/./#/g}##
+endsnippet
+
+# Function
+snippet sub
+`!p snip.rv = ''
+match = re.match( '\$[A-Z_-]+_SPEC', t[8] )
+if match:
+	snip.rv += 'Readonly my ' + match.string + ' => {' + "\n"
+	list = re.findall( '(\$[a-zA-Z0-9_]+)', t[6] )
+	for param_match in list:
+		snip.rv += "\t" + param_match[1:] + ' => { SPEC },' + "\n"
+	snip.rv += '};'
+else:
+	snip.rv = ''
+`
+sub ${1:my_subroutine}${2:($)}${3: : Export( ${4::DEFAULT} )}
+{
+	${5:my ( ${6:$param1} ) = validate${7:_pos}( @_, ${8:$${1/.*/\U$0\E_SPEC/i}} );}
+	$0
+
+	return;
+}
+endsnippet
+
+# Conditional
+snippet if
+if( ${1} ) 
+{
+	${2:# body...}
+}
+${0}
+endsnippet
+
+# Conditional if..else
+snippet ife
+if( ${1} ) 
+{
+	${2:# body...}
+} 
+else 
+{
+	${3:# else...}
+}
+${0}
+endsnippet
+
+# Conditional if..elsif..else
+snippet ifee
+if( ${1} ) 
+{
+	${2:# body...}
+} 
+elsif( ${3} ) 
+{
+	${4:# elsif...}
+} 
+else 
+{
+	${5:# else...}
+}
+${0}
+endsnippet
+
+# Conditional One-line
+snippet xif
+${1:expression} if ${2:condition};
+endsnippet
+
+# Unless conditional
+snippet unless
+unless( ${1} )
+{
+	${2:# body...}
+}
+${0}
+endsnippet
+
+# Unless conditional One-line
+snippet xunless
+${1:expression} unless ${2:condition};
+endsnippet
+
+# Eval with Errors
+snippet eval
+eval 
+{
+	${1:# do something risky...}
+};
+if( $@ ) 
+{
+	${2:# handle failure...}
+}
+${0}
+endsnippet
+
+# While Loop
+snippet while "A simple while loop"
+while( ${1} )
+{
+	${2:# body...}
+}
+${0}
+endsnippet
+
+# While Loop One-line
+snippet while_one_line "A one-line while loop"
+${1:expression} while ${2:condition};
+endsnippet
+
+# For Loop
+snippet for "A simple for loop"
+for( my $${2:var} = 0; $$2 < ${1:count}; $$2${3:++} )
+{
+	${4:# body...}
+}
+${0}
+endsnippet
+
+# Foreach Loop
+snippet foreach "A simple foreach loop"
+foreach my $${1:x}( ${2:hash/array} )
+{
+	${3:# body...}
+}
+${0}
+endsnippet
+
+# Foreach Loop One-line
+snippet foreach_one_line "A one-line foreach loop"
+${1:expression} foreach @${2:array};
+endsnippet
+
+# A Tertiary Boolean Statement
+snippet tertiary "A tertiary statement"
+${1:expression} ? ${2:if_true} : ${3:if_false};
+endsnippet
+
+# Documentation
+snippet docblock "A docblock for subroutines" b
+# ${1:A short description of the subroutine...}${2:
+# Returns  : ${3:n/a}}${4:
+# Params   : ${5:n/a}}${6:
+# Throws   : ${7:n/a}}${8:
+# Comments : ${9:n/a}}
+endsnippet
+
+# POD
+snippet pod "Skeleton for pod documentation" b
+=pod
+
+=head1 NAME
+
+${1:MyModuleOrScript} - ${2:A short description of the module or script.}
+
+=head1 SYNOPSIS
+
+	${3:use MyModule;
+	my $code_example = MyModule->new();
+	$code_example->example_sub();}
+
+=head1 DESCRIPTION
+
+${4:Here goes a longer
+description about
+the script or
+module that you are documenting.}
+
+=head1 SUBROUTINES
+
+=over
+
+=item C<< ${6:example_sub} >>
+
+$0
+
+=back
+
+=head1 AUTHOR
+
+${5:`git config user.name`} <`git config user.email`>
+
+=cut
+endsnippet
+
+snippet psub "Pod documentation for a subroutine"
+=item C<< ${1:example_sub} >>
+
+${0:This subroutine does the following...}
+endsnippet

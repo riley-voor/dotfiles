@@ -1,0 +1,40 @@
+#!/bin/bash
+
+source .git/hooks/lib.sh
+
+exit_if_commit_hooks_should_not_run
+
+# check if the current commit has 2 parents, if so
+# we are re-committing a merge commit and should not
+# run the post-commit hooks
+if git show -s HEAD | grep -q -P '^Merge: [^\s]+\s[^\s]+' ; then
+    color_echo yellow "Ignoring post-commit hooks for merge commit"
+    exit 0
+fi
+
+echo "-POST-COMMIT HOOKS--------------------------------------------------------------------------------"
+
+# MAIN PROGRAM
+
+# get the scripts to run in number order highest to lowest
+scripts=`ls .git/hooks/post_commit_hooks/ | sort -n -r`
+for script in ${scripts[@]} ; do
+    # run the commit hook
+    execute_script="./.git/hooks/post_commit_hooks/$script"
+    $execute_script $script
+
+    # get the result and check the return
+    result="$?"
+    if [[ $result == 0 ]] ; then
+        # success
+        color_echo green "Success: $script"
+    elif [[ $result == 3 ]] ; then
+        # internal error
+        color_echo yellow "Error: $script"
+        exit 3
+    else
+        echo ""
+        color_echo red "Failed: $script"
+        # continue anyways because these are post-commit hooks, we can't stop now!
+    fi
+done

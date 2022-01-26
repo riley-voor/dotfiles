@@ -1,0 +1,71 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script finds and deletes trailing whitespace from all files committed.
+
+# MAIN PROGRAM
+
+get_files_to_check files '.*' 'AMR'
+
+# always perform this check
+# hook_set_changes_hash "$files"
+# skip_hook_if_record_matches
+
+declare -a modified_files
+for file in $files ; do
+    # diff-index exit code is 0 when no whitespace problems
+    whitespace_issues=`git diff-index --cached --check HEAD -- $file | grep -P "trailing whitespace" -A1`
+    if [[ -n "$whitespace_issues" ]] ; then
+        # there are whitespace problems in this file
+        # add this to the list of modified files
+        modified_files+=( "$file" )
+
+        # build friendly highlighted whitespace for the user
+        highlighted_whitespace=""
+        # read 2 lines at a time
+        IFS=$'\n' && while read -u 3 line_info ; do
+            read -u 3 line_code
+            line_num=`echo $line_info | cut -d: -f2`
+            line_whitespace=`echo "$line_code" | cut -c2- | sed -E 's/([[:space:]]+$)/\\\\033[0;41m\1\\\\033[0m/'`
+            highlighted_whitespace+="    Line $line_num: $line_whitespace\n"
+        done 3<<< "$whitespace_issues"
+
+        # warn the user
+        hook_warn "$(
+            color_echo red "Trailing whitespace found in file!"
+            color_echo yellow "Offending file: $file"
+            color_echo yellow "Offending whitespace:"
+            echo -e "$highlighted_whitespace"
+        )"
+
+        # remove the trailing whitespace from the files
+        sed -i 's/[[:space:]]*$//' $file
+
+        # add the newly changed file to our change set
+        git add -- $file
+    fi
+done
+
+# alert the user about the trailing whitespace changes
+if [[ -n "$modified_files" ]] ; then
+    hook_info "$(
+        color_echo red "Your commit contained files that had trailing whitespace!"
+        echo           "Trailing whitespace is unnecessary and can cause merge conflicts."
+        echo -e        "The \\033[1;31mfollowing files have been changed\\033[0m and have had their trailing whitespace removed."
+
+        for file in ${modified_files[@]} ; do
+            echo -e "\t$file"
+        done
+
+        echo " "
+        color_echo yellow "To view the full changeset of your new commit, run \`g diff HEAD~1\` after committing."
+        echo " "
+        color_echo yellow "To undo these changes, run \`g reset --soft HEAD~1\` after committing."
+        echo " "
+        color_echo purple "If you think there was an error caused by these changes, please email Kirk Bauer <kirk@merchlogix.com>."
+    )"
+fi
+
+hook_exit

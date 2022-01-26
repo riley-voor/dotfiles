@@ -1,0 +1,14 @@
+" Author: Harrison Katz <harrison@merchlogix.com>
+"
+" This is the standard vimrc file for Nead Werx.
+" In this file you will find many helpful tools and additions to vim
+" that will speed up your learning and improve your overall coding.
+" Also in here are ways to help keep Nead Werx code styles standard across
+" many filetypes. If you have any questions at all about this file
+" please feel free to reach out to the author. Enjoy!
+
+" Install Vundle
+source /etc/profile.d/vim/vundle.vim
+
+" Install Neadwerx Vimrc settings
+source /etc/profile.d/vim/vimrc.vim

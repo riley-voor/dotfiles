@@ -1,0 +1,68 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks permissions on modifying versioned sql alters
+# based on the current branch
+
+# MAIN PROGRAM
+
+branch=`git rev-parse --abbrev-ref HEAD`
+get_files_to_check files 'sql/versioned/'
+
+# if there are no changed versioned files, don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# figure out the branch 'type' that we're currently on
+# then check various things
+case $branch in
+    bug_*)
+        # bug branches
+        # Users can only add files
+        modified=`git diff HEAD --name-only --staged --diff-filter=DMRT | grep 'sql/versioned/'`
+        if [ -n "$modified" ] ; then
+            hook_error "$(
+                color_echo red "In a bug branch, versioned SQL file may not be modified!"
+                color_echo yellow "Offending files:"
+                print_files "\t" "$modified"
+            )"
+        fi
+
+        # Added versioned files MUST BE the same version as the branch being checked in
+        added=`git diff HEAD --name-only --staged --diff-filter=A | grep 'sql/versioned/'`
+        if [ -n "$added" ] ; then
+            branch_version=`echo "$branch" | cut -f2 -d_`
+            for file in "${added[@]}" ; do
+                if ! [[ "$file" =~ "$branch_version" ]] ; then
+                    hook_error "$(
+                        color_echo red "Versioned SQL files must match the versioned branch they are being created in!"
+                        color_echo yellow "Offending file: $file"
+                        echo "Hint: \`mv $file sql/versioned/$branch/\`"
+                    )"
+                    continue
+                fi
+            done
+        fi
+        ;;
+    v*)
+        # version branches
+        # No restrictions
+        ;;
+    *)
+        # feature branches
+        # Users may not make changes to files
+        hook_error "$(
+            color_echo red "In a feature branch, versioned SQL files may not be added or modified!"
+            color_echo yellow "Offending files:"
+            print_files "\t" "$files"
+        )"
+        ;;
+esac
+
+hook_exit

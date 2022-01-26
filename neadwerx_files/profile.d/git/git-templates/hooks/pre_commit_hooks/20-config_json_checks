@@ -1,0 +1,167 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks edited config/*.json files for:
+#   - correct config name
+#   - duplicate configs
+#   - unused config in xerp
+#   - missing description field
+#   - fallback missing
+
+get_files_to_check files '^config/.*[.]json' 'AMCR'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# test in general for duplicate configs
+duplicate_configs=`cat config/**/*.json | jq -r 'keys[]' | sort | uniq -d`
+if [[ -n "$duplicate_configs" ]] ; then
+    hook_error "$(
+        color_echo red "Found duplicate configs:"
+        for dup in ${duplicate_configs[@]} ; do
+            echo -e "\t$dup"
+        done
+    )"
+fi
+
+for file in ${files[@]} ; do
+    # check for valid json
+    jsonlint -q $file >/dev/null || {
+        hook_error "$(
+            color_echo red "Invalid JSON found in config.json"
+            color_echo yellow "Offending file: $file"
+            echo "Hint: run \`jsonlint $file\` to see the problem."
+        )"
+        continue
+    }
+
+    # get the single config name
+    config_name=`jq -r 'keys[]' $file`
+
+    # config files should have exactly 1 config name defined
+    num_configs=`jq -r 'keys[]' $file | wc -l`
+    if [[ $num_configs -gt 1 ]] ; then
+        hook_error "$(
+            color_echo red "Config files must only define 1 config per file."
+            color_echo yellow "Offending file: $file"
+            color_echo yellow "Found configs: $config_name"
+        )"
+        continue
+    fi
+
+    # take off the newline of the config_name
+    config_name=`echo "$config_name" | tr -d '\n'`
+
+    # check the config name to ensure that it matches the file it's defined in
+    # config names should match their file once all special characters are changed to underscores
+    # and repeated and trailing underscores are removed.
+    #   turn test.config->allow:testing
+    #   into test_config_allow_testing
+    correct_file_name=`echo $config_name | perl -lpe 's/\W+/_/g' | perl -lpe 's/_+$//g'`
+    file_name=`basename $file .json` # remember to remove the extension
+    if [[ "$correct_file_name" != "$file_name" ]] ; then
+        hook_error "$(
+            color_echo red "Config name does not match proper file name!"
+            color_echo yellow "All configs should match their file by replacing special characters with"
+            color_echo yellow "underscores and removing repeated underscores."
+            color_echo yellow "Correct filename: $correct_file_name (config:$config_name)"
+            color_echo yellow "Current filename: $file_name."
+
+            dir_name=`dirname $file`
+            echo "Hint: \`mv $file $dir_name/$correct_file_name.json\`"
+        )"
+        continue
+    fi
+
+    # check for unused configs
+    config_search="$config_name"
+
+    # if the config uses section[* or similar
+    regex="[^'\"]+\[.*"
+    if [[ "$config_name" =~ $regex ]] ; then
+        # then modify the config name to remove from [--> onward
+        config_search=`echo "$config_name" | grep -P -o "^[^['\"]+?(?=\[)"`
+    fi
+
+    count=`ag --php --html --js --json --perl -l -Q "$config_search" --ignore common/simplesaml/ --ignore auxutils/ --ignore sql/ --ignore qa/ --ignore data/ --ignore common/functions/aws_sdk/ --ignore common/functions/google_api/ | wc -l`
+    if [[ $count -lt 2 ]] ; then
+        # found an unused config
+        # 1 match for the config definition, 2+ matches for other usages
+
+        # check the config_file to see if this config is actually used externally
+        jq_query=".\"$config_name\".\"externally_used\""
+        externally_used=`jq --exit-status "$jq_query" $file`
+        if [[ $? != 0 ]] ; then
+            # config is NOT externally used, therefore it's unused!
+            hook_error "$(
+                color_echo red "Unused config found in file '$file'"
+                color_echo yellow "Unused config: $config_name"
+                echo "Hint: You can test for yourself with \`ag -l -Q '$config_name'\`"
+           )"
+           continue
+        fi
+    fi
+
+    # check for missing description
+    missing_descriptions=`cat $file | jq 'to_entries[] | { config_name: .key, description: .value.description } | select( .description == null )'`
+    if [[ $? != 0 ]] ; then
+        hook_error "$(
+            color_echo red "Found incorrect config description"
+            color_echo yellow "Offending file: $file"
+            echo "Hint: A proper config description is of the form:"
+            color_echo green '    "description": {'
+            color_echo green '        "fallback": "Some proper description."'
+            color_echo green '    }'
+        )"
+        continue
+    fi
+
+    if [[ -n "$missing_descriptions" ]] ; then
+        hook_error "$(
+            color_echo red "Missing config description"
+            color_echo yellow "Offending file: $file"
+            color_echo yellow "Offending config: $config_name"
+            echo "Hint: A proper config description is of the form:"
+            color_echo green '    "description": {'
+            color_echo green '        "fallback": "Some proper description."'
+            color_echo green '    }'
+        )"
+        continue
+    fi
+
+    # check for missing fallback
+    missing_fallbacks=`cat $file | jq 'to_entries[] | { config_name: .key, fallback: .value.description.fallback } | select( .fallback == null )'`
+    if [[ $? != 0 ]] ; then
+        hook_error "$(
+            color_echo red "Found incorrect config description"
+            color_echo yellow "Offending file: $file"
+            echo "Hint: A proper config description is of the form:"
+            color_echo green '    "description": {'
+            color_echo green '        "fallback": "Some proper description."'
+            color_echo green '    }'
+        )"
+        continue
+    fi
+
+    if [[ -n "$missing_fallbacks" ]] ; then
+        hook_error "$(
+            color_echo red "Missing config description fallback"
+            color_echo yellow "Offending file: $file"
+            color_echo yellow "Offending config: $config_name"
+            echo "Hint: A proper config description is of the form:"
+            color_echo green '    "description": {'
+            color_echo green '        "fallback": "Some proper description."'
+            color_echo green '    }'
+        )"
+        continue
+    fi
+done
+
+hook_exit

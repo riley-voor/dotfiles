@@ -1,0 +1,80 @@
+{
+    "additionalRules": [
+        "/etc/profile.d/vimrc/plugins/syntastic_checkers/jscs/*.js",
+        "/sublime/users/path/to/standards/vim/neadwerx_plugins/syntastic_checkers/jscs/*.js"
+    ],
+    "disallowMixedSpacesAndTabs": true,
+    "disallowMultipleLineBreaks": true,
+    "disallowMultipleLineStrings": true,
+    "disallowMultipleVarDecl": true,
+    "disallowOperatorBeforeLineBreak": [
+        "."
+    ],
+    "disallowPaddingNewlinesInBlocks": true,
+    "disallowSpaceAfterPrefixUnaryOperators": true,
+    "disallowSpaceBeforePostfixUnaryOperators": true,
+    "disallowSpacesInCallExpression": true,
+    "disallowSpacesInsideArrayBrackets": true,
+    "disallowTrailingComma": true,
+    "disallowTrailingWhitespace": true,
+    "maximumLineLength": {
+        "allowComments": true,
+        "allowRegex": true,
+        "allowUrlComment": true,
+        "value": 180
+    },
+    "requireAlignedObjectValues": "ignoreLineBreak",
+    "requireBlocksOnNewline": true,
+    "requireCommaBeforeLineBreak": true,
+    "requireCurlyBraces": [
+        "if",
+        "else",
+        "for",
+        "while",
+        "do",
+        "try",
+        "catch"
+    ],
+    "requireNewlineBeforeBlockStatements": true,
+    "requirePaddingNewLinesInObjects": true,
+    "requirePaddingNewlinesBeforeKeywords": [
+        "do",
+        "for",
+        "if",
+        "switch",
+        "case",
+        "try",
+        "catch",
+        "void",
+        "while"
+    ],
+    "requireSpaceAfterBinaryOperators": true,
+    "requireSpaceAfterLineComment": true,
+    "requireSpaceAfterObjectKeys": true,
+    "requireSpaceBeforeBinaryOperators": true,
+    "requireSpaceBeforeBlockStatements": true,
+    "requireSpaceBeforeObjectValues": true,
+    "requireSpacesInConditionalExpression": {
+        "afterConsequent": true,
+        "afterTest": true,
+        "beforeAlternate": true,
+        "beforeConsequent": true
+    },
+    "disallowSpacesInFunctionExpression": {
+        "beforeOpeningRoundBrace": true
+    },
+    "requireSpacesInsideParentheses": {
+        "all": true,
+        "except": [
+            "{",
+            "}"
+        ]
+    },
+    "validateIndentation": 4,
+    "validateLineBreaks": "LF",
+    "validateParameterSeparator": ", ",
+    "validateQuoteMarks": {
+        "escape": true,
+        "mark": "'"
+    }
+}

@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Collect git usage data
+
+keyfile="/tmp/.$(id -u).git_report.key"
+
+if [ ! -f "$keyfile" ] ; then
+    cat > "$keyfile" <<__EOF__
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEA2egv2ps++siEeKmZ/Y50Mjl9IhteiqhIMiiSacCZ9EwwTKyo
+tqdbnWlHxQPpqyLzmqURaZp3LoalFgekEthwEocjClt6N2T+dIfOGgKb/LWh4ok2
+CSb/ORpsSMR6q/6j3eH021DbZPROjLWANqe3aC8CCLt5iBF+jiqtXLDBaeD8m5PJ
+tPpdDC3akhQjj3sM8caThlR4fFb22PgTw60pISbWKObJ7jMJcAr6yLFOLTao0XI7
+tapR+WJK3PSZQDppeDYT40dvTvCs24N8uw1Nhq3sYZ7KLkgXkK20NWVYOQuJjWml
+E4JUISHIY6awVfiJBAFuoyn/OAh1pOaMCm4VMQIDAQABAoIBAQCxN17rx8RRipAJ
+3c0J5DflvNFi0qVx2OhWOp7QeL38a5YAVY8kdTlR7JRcyxDXiKZbh5GAtAnngcNz
+BiXO2c1TlCnQO5NKx80VknjwuFyKCmGs7fBPQzLgCvgzue8WQBKe2iwbzUeQdAwJ
+7XZnfMDxbwGVfnqZSbkF//lb37h81Of97chw43uDLBl4VSfFWQfiHvJdT8WGsAGV
+Cstb91lsJHKhpxLrZR+12FyR2JGRtTi0efWR+HYOYZ/Gr9Tme5J+5KAVa1ZGVAj0
+jVSHPM8O2JXTknFA1QXQBkAN9XmeWHPGkFud8e9MtejC3xA4XQdLQ+2EOMKNzPHu
+W3FALGDRAoGBAPDC6O1QmFh+9v7InHJ1L9xZ+KJ3M7andzutO2KBu5bDbr9w4tHM
+Xdj3iYQPTjrAa3uYK148Nmz1GZqliVAKgS740hy8VyvTrwatLef3ofFRsEeNjOIj
+AklsK4p46WGYAuVRsB5sWP6WeMYrwIEjaXqaeiRu9ITGQy8LGaufknmdAoGBAOey
+9tgTYkevo9GC1wI4PyqkJ242Rv2UbaWUqeLpwWZQh8o5asHq2zsq2BwLrESo/yJv
+/FNiyC8WAkY184Nkm+uOezF8ReY+1jx5/cGVRQez+0Dk/qgOUQbnw3EEmGZUoqvb
+EQ+8j7c21yZTAjb7M7U7V0PJSm4y2j4ZDTdHQ4+lAoGAavDIcZDY+oX6xBTrmNOA
+nMnB7Lgx2jHsfi9mL00cu8y3BoXn2fSCwvrAtE3wG5yYoV9n9AWezyrXYp+grFLe
+KrUO7wChX7A5ECggOeb+oaf9Ouse5ttSCrbnaCxozZatwppUNk8+AGdp4exRJ4tJ
+MNIo6sH2DnvaH604i8jnUOkCgYEAs2AQzE2Na7QlnkCuFjDXbjqxsBhjM1Qi4urJ
+7ztLF9vGlJ+I7+HToeXUcznyPyGai92ouiGimxlt309LW/Ca6W1gIHp2Xv9Munsz
+Ihhe3czP+niOUirrPe5Vl3yYQ7jIS0YI2mb/2DajsC7Zaxlk+aycLYV7kv7ZiPO6
+EI6iVmUCgYAXvrzTO0NorEw+Rxuwr7S/LgGuvEnBpumQTqxOdIZy1eFVfLGc8aP0
+jKuJgai/9Fj3e3+epQPBoK0riBIgGQ/54c8gzsvO7GsR/ymZM2uLnBgqxCs5vBUg
+bSoMCoC6xBUHhKQMtTUuhtnDD+prT3N4XJPXjFb42OOXf2vRaNJxzQ==
+-----END RSA PRIVATE KEY-----
+__EOF__
+fi
+
+chmod 0600 "$keyfile"
+
+if [ -t 1 ] ; then
+    if [ "$0" != "g" ] ; then
+        b="$(git symbolic-ref HEAD 2>/dev/null)"
+        b=${b##refs/heads/}
+
+        date="$(date --iso-8601=seconds)"
+
+        file="/tmp/$date.$(hostname).$RANDOM"
+
+        echo "$date: branch=$b,user=$USER,host=$(hostname),args=$@" >> $file
+        scp -q -i "$keyfile" -o StrictHostKeyChecking=no -o ConnectTimeout=1 "$file" gitreport@dev.internal: >/dev/null 2>&1
+
+    fi
+fi
+
+/usr/bin/original-git "$@"

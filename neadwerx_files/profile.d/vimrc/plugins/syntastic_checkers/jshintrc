@@ -1,0 +1,12 @@
+{
+    "bitwise" : true,
+    "curly" : true,
+    "forin": true,
+    "evil": true,
+    "-W041": false,
+    "trailing": false,
+    "sub": true,
+    "scripturl" : true,
+    "eqnull" : true,
+    "maxerr" : 100000
+}

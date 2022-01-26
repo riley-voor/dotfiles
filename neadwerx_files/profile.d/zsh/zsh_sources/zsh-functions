@@ -1,0 +1,166 @@
+# This is a file full of functions
+
+function ack () {
+    if [ -e ~/bin/ack ] ; then
+        ~/bin/ack "$@"
+    elif [ -e /usr/bin/ack ] ; then
+        /usr/bin/ack "$@"
+    else
+        \grep -lR "$@" | \grep -v "/\.svn/"
+    fi
+}
+
+function mdless () {
+    pandoc -f markdown -t man --smart --normalize --standalone --toc "$*" | man -l -
+}
+
+function zsh_stats() {
+  fc -l 1 | awk '{CMD[$2]++;count++;}END { for (a in CMD)print CMD[a] " " CMD[a]/count*100 "% " a;}' | grep -v "./" | column -c3 -s " " -t | sort -nr | nl |  head -n20
+}
+
+function take() {
+  mkdir -p $1
+  cd $1
+}
+
+#
+# Get the value of an alias.
+#
+# Arguments:
+#    1. alias - The alias to get its value from
+# STDOUT:
+#    The value of alias $1 (if it has one).
+# Return value:
+#    0 if the alias was found,
+#    1 if it does not exist
+#
+function which_alias() {
+    alias "$1" | sed "s/^$1='\(.*\)'$/\1/"
+    test $(alias "$1")
+}
+
+#
+# Try to get the value of an alias,
+# otherwise return the input.
+#
+# Arguments:
+#    1. alias - The alias to get its value from
+# STDOUT:
+#    The value of alias $1, or $1 if there is no alias $1.
+# Return value:
+#    Always 0
+#
+function try_alias_value() {
+    alias_value "$1" || echo "$1"
+}
+
+#
+# Set variable "$1" to default value "$2" if "$1" is not yet defined.
+#
+# Arguments:
+#    1. name - The variable to set
+#    2. val  - The default value
+# Return value:
+#    0 if the variable exists, 3 if it was set
+#
+function default() {
+    test `typeset +m "$1"` && return 0
+    typeset -g "$1"="$2"   && return 3
+}
+
+#
+# Set enviroment variable "$1" to default value "$2" if "$1" is not yet defined.
+#
+# Arguments:
+#    1. name - The env variable to set
+#    2. val  - The default value
+# Return value:
+#    0 if the env variable exists, 3 if it was set
+#
+function env_default() {
+    env | grep -q "^$1=" && return 0
+    export "$1=$2"       && return 3
+}
+
+# Find all files that don't contain a specific regex pattern
+# e.g.:  vnack '\bcommon_header.xml\b'
+function vnack () {
+    setopt local_options SH_WORD_SPLIT
+
+   local files=''
+   local tosearch=''
+   if [ $# -le 1 -a -d sql ] ; then
+       # If no directories are specified, and we are in a base
+       # code directory, automatically exclude wiki and sql directories
+       tosearch="$(/bin/ls | grep -Ev '^(wiki|sql)$')"
+       files="$(ack -L "$@" $tosearch)"
+   else
+       files="$(ack -L "$@")"
+   fi
+   if [ -z "$files" ] ; then
+       echo "No matches found."
+   else
+       search="$(echo "$@" | sed 's/^.* //' | sed 's=/=\/=')"
+       vim "+/$search" $files
+   fi
+}
+
+# Find all files that contain a specific regex pattern
+# e.g.:  vack '\bIPM\b'
+function vack () {
+    setopt local_options SH_WORD_SPLIT
+
+   local files=''
+   local tosearch=''
+   if [ $# -le 1 -a -d sql ] ; then
+       # If no directories are specified, and we are in a base
+       # code directory, automatically exclude wiki and sql directories
+       tosearch="$(/bin/ls | grep -Ev '^(wiki|sql)$')"
+       files="$(ack -l "$@" $tosearch)"
+   else
+       files="$(ack -l "$@")"
+   fi
+   if [ -z "$files" ] ; then
+       echo "No matches found."
+   else
+       search="$(echo "$@" | sed 's/^.* //' | sed 's=/=\/=')"
+       vim "+/$search" $files
+   fi
+}
+
+# Tail access log of site starting with a string
+# e.g.: taila ises   (tails access log of ises.*.neadwerx.com)
+function taila () {
+    setopt local_options SH_WORD_SPLIT
+
+    tail -f /var/log/httpd/$1*-access_log
+}
+
+# Tail error log of site starting with a string
+# e.g.: taile ises   (tails error log of ises.*.neadwerx.com)
+function taile () {
+    setopt local_options SH_WORD_SPLIT
+
+    tail -f /var/log/httpd/$1*-error_log
+}
+
+# With no parameters, changes into vhosts directory
+# With one parameter, changes into a subdirectory of the vhosts
+# directory that starts with that string
+# e.g.: v ises   (changes into /var/www/vhosts/ises.*.neadwerx.com)
+function v () {
+    setopt local_options SH_WORD_SPLIT
+
+    if [ -n "$1" ] ; then
+        cd /var/www/vhosts/$1*
+    else
+        cd /var/www/vhosts
+    fi
+    [ -d .git ] && {
+        if [ $UID -ne 0 ] ; then
+            g fetch
+        fi
+        g status
+    }
+}
+

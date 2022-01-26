@@ -1,0 +1,66 @@
+# Nead Werx Perl Standard
+# these are based off of the -pbp flag
+# and modified for Nead Werx
+
+# pbp 78
+--maximum-line-length=120
+
+# line length is M+L*I
+#     M = max line length (80)
+#     L = indentation of code
+#     I = indent columns (4)
+# this basically ignores whitespace for line length consideration
+--variable-maximum-line-length
+
+--indent-columns=4
+
+# run tidy twice to ensure beautiful code!
+--iterations=2
+
+--continuation-indentation=4
+
+# have tidy do the following:
+#   - cretae a backup of the filename.ext.bak
+#   - run perl tidy
+#   - replace the original filename.ext with filename.ext.bak
+#   - delete filename.ext.bak if no errors ocurred
+--backup-and-modify-in-place
+--backup-file-extension="/"
+
+# have tidy print errors to STDERR instead of a file
+--standard-error-output
+
+# pbp --vertical-tightness=2
+
+# do not indent closing tokens
+--closing-token-indentation=0
+
+# all (), [], {} have spaces surrounding it unless it
+# contains a single value or quoted string
+--all-containers-tightness=1
+
+# always spaces for parens
+--paren-tightness=0
+
+# no spaces for square brackets
+--square-bracket-tightness=2
+
+# no space it encloses a single value or quoted string
+--brace-tightness=1
+
+# always space code enclosing braces
+--block-brace-tightness=0
+
+# do not add spaces for semi-colons in for statements
+--nospace-for-semicolon
+
+# do not outdent lines over the max length
+--nooutdent-long-lines
+
+--want-break-before="-> % + - * / x != == >= <= =~ !~ < > | & = **= += *= &= <<= &&= -= /= |= >>= ||= //= .= %= ^= x="
+
+--opening-brace-on-new-line
+
+--nospace-after-keyword="if else elsif unless while for foreach switch case given when"
+
+--nooutdent-labels

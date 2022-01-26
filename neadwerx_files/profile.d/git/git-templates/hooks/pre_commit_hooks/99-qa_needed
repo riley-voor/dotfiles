@@ -1,0 +1,45 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks if any unversioned SQL is in the branch and if there is then:
+# it checks if this is an Epic branch and if the "QA Needed" flag is set to yes.
+# it then verifies the existence of a .devdb* file in the parent directory.
+
+# Let's set some variables that will come in handy.
+branch=`git rev-parse --abbrev-ref HEAD`
+parent_dir=`git rev-parse --show-toplevel`
+
+jira_api=`get_credentials jira | jq '.api' -r`
+jira_user=`get_credentials jira | jq '.username' -r`
+jira_pass=`get_credentials jira | jq '.password' -r`
+
+# Let's check if there's any unversioned SQL in this branch before going further.
+if ! test -n "$(find "$parent_dir/sql/unversioned/" -maxdepth 1 -name '*.sql' -print -quit)" ; then
+    exit 0
+fi
+
+# Let's see if this branch belongs to a JIRA Epic. If not, exit.
+ticket_class=`curl -qs -u "$jira_user:$jira_pass" "$jira_api/issue/$branch?fields=issuetype" \
+              -H "Content-Type: application/json" 2>/dev/null | jq '.fields.issuetype.name' -r`
+if [ "$ticket_class" != "Epic" ] ; then
+    exit 0
+fi
+
+# Now let's see if that ticket has the "QA Needed" flag set to yes. If not, exit.
+qa_needed=`curl -qs -u "$jira_user:$jira_pass" "$jira_api/issue/$branch?fields=customfield_14861" \
+           -H "Content-Type: application/json" 2>/dev/null | jq '.fields.customfield_14861.value' -r`
+if [ "$qa_needed" != "Yes" ] ; then
+    exit 0
+fi
+
+# If the .devdb file is missing from the parent folder then we error out.
+if ! test -n "$(find "$parent_dir" -maxdepth 1 -name '.devdb*' -print -quit)" ; then
+    hook_error "$(
+        color_echo red "Attention: The Epic associated with this branch is marked as needing QA."
+        color_echo red "A .devdb file for the customer is required in the root directory of this branch."
+    )"
+fi
+
+hook_exit

@@ -1,0 +1,148 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# CONSTANTS
+span_code='span style="font-size:1em;font-family:Consolas,Inconsolata,Courier,monospace;margin:0px 0.05em;padding:0px 0.2em;white-space:pre-wrap;border:1px solid rgb(234,234,234);background-color:rgb(248,248,248);border-radius:3px;display:inline;"'
+
+# This script checks for the following:
+#   - Check to see if certain controllers were modified in any way
+#   - Check to see if certain route handles were modified in any way
+#   - Send an email about these potential changes
+
+# MAIN PROGRAM
+get_files_from_commit mapping_changes    'HEAD' 'api/versions/.*/_mapping.php' 'ACMRD'
+get_files_from_commit controller_changes 'HEAD' 'api/controllers/'             'ACMRD'
+get_files_from_commit view_changes       'HEAD' 'api/views/'                   'ACMRD'
+get_files_from_commit hook_changes       'HEAD' 'api/hooks/'                   'ACMRD'
+
+# if there are no files, then don't worry about it :)
+if [[ -z "$mapping_changes" ]] && [[ -z "$controller_changes" ]] && [[ -z "$view_changes" ]] && [[ -z "$hook_changes" ]] ; then
+    exit 0
+fi
+
+# list of important routes that should be checked for changes
+declare -a important_routes=(
+    'reset_time_clocks#search'
+    'entity_reset_teams#search'
+    'entities#search'
+    'resets#search'
+    'locations#search'
+    'projects#get'
+)
+
+# list of potential changes to include in the email
+declare -a potential_changes=()
+
+# check version transform mapping changes
+for file in $mapping_changes ; do
+    # check for 'all_routes' being affected
+    if cat $file | grep -q -P 'all_routes.*?=>' ; then
+        potential_changes+=("<b>Version Transform Mapping</b> file <$span_code>$file</span> included <$span_code>all_routes</span> mapping changes.")
+    fi
+
+    # check important routes
+    for handle in ${important_routes[@]} ; do
+        # get the resource from the handle
+        handle_resource=`echo $handle | cut -d'#' -f1`
+
+        if cat $file | grep -q -P "$handle.*?=>" ; then
+            potential_changes+=("<b>Version Transform Mapping</b> file <$span_code>$file</span> included <$span_code>$handle</span> mapping changes.")
+        elif cat $file | grep -q -P "$handle_resource.*?=>" ; then
+            potential_changes+=("<b>Version Transform Mapping</b> file <$span_code>$file</span> included <$span_code>$handle_resource</span> mapping changes.")
+        fi
+    done
+done
+
+# check controller changes by filename
+for file in $controller_changes ; do
+    for handle in ${important_routes[@]} ; do
+        # get the filename from the handle
+        handle_resource=`echo $handle | cut -d'#' -f1`
+        filename="api/controllers/$handle_resource.php"
+
+        if [[ "$file" == "$filename" ]] ; then
+            potential_changes+=("<b>Controller</b> file <$span_code>$file</span> has been changed and may affect the <$span_code>$handle</span> route.")
+        fi
+    done
+done
+
+# check view changes by filename
+for file in $view_changes ; do
+    for handle in ${important_routes[@]} ; do
+        # get the filename from the handle
+        handle_resource=`echo $handle | cut -d'#' -f1`
+        filename="api/views/$handle_resource.php"
+
+        if [[ "$file" == "$filename" ]] ; then
+            potential_changes+=("<b>View</b> file <$span_code>$file</span> has been changed and may affect the <$span_code>$handle</span> route.")
+        fi
+    done
+done
+
+# check hook changes by filename
+for file in $hook_changes ; do
+    for handle in ${important_routes[@]} ; do
+        if cat $file | grep -q -P "^\s*[*]+\s+@route\s+\w+\s+$handle" ; then
+            potential_changes+=("<b>Hook</b> file <$span_code>$file</span> has been changed and may affect the <$span_code>$handle</span> route.")
+        fi
+    done
+done
+
+# if there are potential changes, then do not send an email
+if [[ -n "$potential_changes" ]] ; then
+    to="middleware@merchlogix.com"
+    committer_location=`echo "$USER@$HOSTNAME"`
+    branch=`git rev-parse --abbrev-ref HEAD`
+    commit_message=`git log -1 --stat`
+    commit_sha=`git log -1 --format="%H"`
+
+    # construct the message
+    subject="[Important API Route Changes] by $committer_location on branch $branch -- `date +%c`"
+    body="<!DOCTYPE html>
+          <html>
+            <head>
+            </head>
+            <body>
+            The Nead Werx commit hooks have found potential changes for important routes.
+            </br>
+            </br>
+            <h4>Potential Changes:</h4>
+            <ul>
+"
+
+    for change in "${potential_changes[@]}" ; do
+        body+="<li>$change</li>\n"
+    done
+
+    body+=" </ul>
+            </br>
+            <h4>Important Routes:<h4>
+            <ul>"
+
+    for handle in ${important_routes[@]} ; do
+        body+="<li>$handle</li>\n"
+    done
+
+    body+=" </ul>
+            </br>
+            <h4><a href='https://bitbucket.com/neadwerx/xerp/commits/$commit_sha'>Commit:</a></h4>
+            <hr>
+            <pre>$commit_message</pre>
+            </body>
+          </html>"
+
+    # send the email
+    (
+        echo "To: $to"
+        echo "Subject: $subject"
+        echo "MIME-VERSION:1.0"
+        echo "Content-Type: text/html"
+        echo
+        echo -e "$body"
+        echo
+    ) | /usr/sbin/sendmail -t
+fi
+
+hook_exit

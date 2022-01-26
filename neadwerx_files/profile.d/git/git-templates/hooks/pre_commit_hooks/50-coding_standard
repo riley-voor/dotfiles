@@ -1,0 +1,482 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# syntax errors are always NOT allowed
+valid_style_error_percent="1"
+valid_style_warning_percent="10"
+valid_syntax_warning_percent="5"
+# NOTE: these might get changed if inside of a "special_branch", see below
+
+# global ignore
+declare -a ignore_files=(
+    '*common/barcode/*'
+    '*common/dompdf/*'
+    '*common/simplesaml/*'
+    '*vendor/bundle/*'
+    '*common/functions/aws_sdk/*'
+    '*common/functions/Whoops/*'
+    '*common/functions/google_api/*'
+)
+
+# ignore these files syntax check
+declare -a ignore_syntax_files=(
+)
+
+# ignore these files style check
+declare -a ignore_style_files=(
+)
+
+# Variables for valid percentages
+
+# ignore these branches style check
+declare -a special_branches=(
+    'bug_*'
+)
+branch=`git rev-parse --abbrev-ref HEAD`
+
+matches_regex_element "$branch" "${special_branches[@]}"
+if [[ $? == 0 ]] ; then
+    skip_style_checks="1"
+    skip_syntax_warnings="1"
+    valid_style_error_percent="100"
+    valid_style_warning_percent="100"
+    valid_syntax_warning_percent="100"
+fi
+
+# Functions for syntax checking
+
+function check_syntax_php ()
+{
+    local return_status=0
+    file=$1
+
+    # Check if the file compiles
+    php -l $file >/dev/null 2>&1 || {
+        hook_error "$(
+            color_echo red "Error processing syntax: $file"
+            echo "Hint: Check syntax with \`php -l $file\`"
+        )"
+    }
+}
+
+function check_style_php ()
+{
+    local return_status=0
+    file=$1
+
+    # Check if the file passes error% and warning% for phpcs
+    lines=`cloc $file --json | jq -r '.SUM.code' | tr -d '\n'`
+    phpcs=`phpcs --standard=NeadWerx $file`
+
+    # Match the output against a regex
+    error_regex="FOUND ([0-9]+) ERROR"
+    [[ $phpcs =~ $error_regex ]]
+    errors="${BASH_REMATCH[1]}"
+
+    warning_regex=" ([0-9]+) WARNING"
+    [[ $phpcs =~ $warning_regex ]]
+    warnings="${BASH_REMATCH[1]}"
+
+    valid_style_error_count=`echo "scale=2; $lines * ($valid_style_error_percent / 100)" | bc`
+    valid_style_error_count=`echo "scale=0; $valid_style_error_count/1" | bc`
+
+    valid_style_warning_count=`echo "scale=2; $lines * ($valid_style_warning_percent / 100)" | bc`
+    valid_style_warning_count=`echo "scale=0; $valid_style_warning_count/1" | bc`
+
+    return_status=0
+
+    error_message=""
+    if [ -n "$errors" ] ; then
+        error_test=`echo "$errors <= $valid_style_error_count" | bc`
+        if [[ "$error_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many errors: $errors\033[1;33m ($valid_style_error_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    if [ -n "$warnings" ] ; then
+        warning_test=`echo "$warnings <= $valid_style_warning_count" | bc`
+        if [[ "$warning_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many warnings: $warnings\033[1;33m ($valid_style_warning_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    # trim final "\n"
+    error_message=${error_message%??}
+
+    if [[ "$return_status" != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Found style problems in file '$file'"
+            color_echo red "$error_message"
+            echo "Hint: See problems with \`phpcs --standard=NeadWerx $file\`"
+        )"
+    fi
+}
+
+function check_syntax_js ()
+{
+    local return_status=0
+    file=$1
+    lines=`cloc $file --json | jq -r '.SUM.code' | tr -d '\n'`
+
+    # jshint
+    #jshint=`jshint --config /etc/profile.d/vimrc/plugins/syntastic_checkers/jshintrc --verbose --reporter /etc/profile.d/vimrc/plugins/syntastic_checkers/neadwerx_reporter $file`
+    jshint=`jshint --verbose --reporter /etc/profile.d/vimrc/plugins/syntastic_checkers/neadwerx_reporter $file`
+    if [ $? == 0 ] ; then
+       return 0
+    fi
+
+    error_regex="Found: ([0-9]+) error"
+    [[ $jshint =~ $error_regex ]]
+    errors="${BASH_REMATCH[1]}"
+
+    if [[ $errors != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Error processing syntax: $file"
+            echo "Hint: Check syntax with \`jshint --config /etc/profile.d/vimrc/plugins/syntastic_checkers/jshintrc \\"
+            echo "                                --reporter /etc/profile.d/vimrc/plugins/syntastic_checkers/jshintrc \\"
+            echo "                                --verbose $file\`"
+        )"
+        return 1
+    fi
+
+    if [[ -n $skip_syntax_warnings ]] ; then
+        # skip the syntax warning checks, just return
+        return 0
+    fi
+
+    warning_regex=" ([0-9]+) warning"
+    [[ $jshint =~ $warning_regex ]]
+    warnings="${BASH_REMATCH[1]}"
+
+    valid_syntax_warning_count=`echo "scale=2; $lines * ($valid_syntax_warning_percent / 100)" | bc`
+    valid_syntax_warning_count=`echo "scale=0; $valid_syntax_warning_count/1" | bc`
+
+    error_message=""
+    if [ -n "$warnings" ] ; then
+        warning_test=`echo "$warnings <= $valid_syntax_warning_count" | bc`
+        if [[ "$warning_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many warnings: $warnings\033[1;33m ($valid_style_warning_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    # trim final "\n"
+    error_message=${error_message%??}
+
+    if [[ "$return_status" != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Found syntax problems in file '$file'"
+            color_echo red "$error_message"
+            echo "Hint: See problems with \`jshint --config /etc/profile.d/vimrc/plugins/syntastic_checkers/jshintrc \\"
+            echo "                                --reporter /etc/profile.d/vimrc/plugins/syntastic_checkers/jshintrc \\"
+            echo "                                --verbose $file\`"
+        )"
+    fi
+}
+
+function check_style_js ()
+{
+    local return_status=0
+    file=$1
+    lines=`cloc $file --json | jq -r '.SUM.code' | tr -d '\n'`
+
+    # eslint
+    #eslint=`eslint --config /etc/profile.d/vimrc/plugins/syntastic_checkers/eslintrc.js --no-ignore --max-warnings 0 --format json $file 2>/dev/null`
+    eslint=`eslint --no-ignore --max-warnings 0 --format json $file 2>/dev/null`
+    if [[ $? == 0 ]] ; then
+        return 0
+    fi
+
+    errors=`echo $eslint | jq -r '.[].errorCount' | tr -d '\n'`
+    warnings=`echo $eslint | jq -r '.[].warningCount' | tr -d '\n'`
+
+    valid_style_warning_count=`echo "scale=2; $lines * ($valid_style_warning_percent / 100)" | bc`
+    valid_style_warning_count=`echo "scale=0; $valid_style_warning_count/1" | bc`
+
+    valid_style_error_count=`echo "scale=2; $lines * ($valid_style_error_percent / 100)" | bc`
+    valid_style_error_count=`echo "scale=0; $valid_style_error_count/1" | bc`
+
+
+    return_status=0
+    error_message=""
+
+    if [ -n "$warnings" ] ; then
+        warning_test=`echo "$warnings <= $valid_style_warning_count" | bc`
+        if [[ "$warning_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many warnings: $warnings\033[1;33m ($valid_style_warning_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    if [ -n "$errors" ] ; then
+        error_test=`echo "$errors <= $valid_style_error_count" | bc`
+        if [[ "$error_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many errors: $errors\033[1;33m ($valid_style_error_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    # trim final "\n"
+    error_message=${error_message%??}
+
+    if [[ "$return_status" != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Found style problems in file '$file'"
+            echo -e "$error_message"
+            echo "Hint: See problems with \`eslint --config /etc/profile.d/vimrc/plugins/syntastic_checkers/eslintrc.js \\"
+            echo "                                --no-ignore --max-warnings 0 \\"
+            echo "                                $file\`"
+        )"
+    fi
+}
+
+function check_syntax_perl ()
+{
+    local return_status=0
+    file=$1
+
+    # perl actually runs includes, so go to the correct directory
+    script_dir="$(pwd)"
+    cd "$(git rev-parse --show-toplevel)"
+    cd "$(dirname $file)"
+
+    filename="$(basename $file)"
+
+    # Check if the file compiles
+    perl -wc $filename >/dev/null 2>&1 || {
+        hook_error "$(
+            color_echo red "Error processing syntax: $file"
+            echo "Hint: Check syntax with \`perl -wc $file\`"
+        )"
+    }
+
+    # go back to saved dir
+    cd $script_dir
+}
+
+function check_style_perl ()
+{
+    local return_status=0
+    file=$1
+
+    # perl actually runs includes, so go to the correct directory
+    script_dir="$(pwd)"
+    cd "$(git rev-parse --show-toplevel)"
+    cd "$(dirname $file)"
+
+    filename="$(basename $file)"
+
+    # Check if the file passes error% and warning% for perlcritic
+    lines=`cloc $filename --json | jq -r '.SUM.code' | tr -d '\n'`
+    perlcritic=`perlcritic --profile /etc/profile.d/vimrc/plugins/syntastic_checkers/perlcriticrc --verbose "%s\n" $filename`
+
+    # Match the output against a regex
+    errors=`echo "$perlcritic" | grep '^[4-5]' | wc -l`
+    warnings=`echo "$perlcritic" | grep '^[1-3]' | wc -l`
+
+    valid_style_error_count=`echo "scale=2; $lines * ($valid_style_error_percent / 100)" | bc`
+    valid_style_error_count=`echo "scale=0; $valid_style_error_count/1" | bc`
+
+    valid_style_warning_count=`echo "scale=2; $lines * ($valid_style_warning_percent / 100)" | bc`
+    valid_style_warning_count=`echo "scale=0; $valid_style_warning_count/1" | bc`
+
+    return_status=0
+
+    error_message=""
+    if [ -n "$errors" ] ; then
+        error_test=`echo "$errors <= $valid_style_error_count" | bc`
+        if [[ "$error_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many errors: $errors\033[1;33m ($valid_style_error_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    if [ -n "$warnings" ] ; then
+        warning_test=`echo "$warnings <= $valid_style_warning_count" | bc`
+        if [[ "$warning_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many warnings: $warnings\033[1;33m ($valid_style_warning_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    # trim final "\n"
+    error_message=${error_message%??}
+
+    if [[ "$return_status" != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Found style problems in file '$file'"
+            color_echo red "$error_message"
+            echo "Hint: See problems with \`perlcritic --profile /etc/profile.d/vimrc/plugins/syntastic_checkers/perlcriticrc \\"
+            echo '                                    --verbose "[%s] %m at (%l, %c)\n" \\'
+            echo "                                    --color-severity-5 RED --color-severity-4 RED \\"
+            echo "                                    --color-severity-3 BRIGHT_YELLOW --color-severity-2 BRIGHT_YELLOW \\"
+            echo "                                    --color-severity-1 BRIGHT_YELLOW $filename"
+        )"
+    fi
+
+    # go back to saved dir
+    cd $script_dir
+}
+
+function check_syntax_json ()
+{
+    local return_status=0
+    file=$1
+
+    # Check if the file compiles
+    jsonlint -q $file >/dev/null 2>&1 || {
+        hook_error "$(
+            color_echo red "Error processing syntax: $file"
+            echo "Hint: Check syntax with \`jsonlint -q $file\`"
+        )"
+    }
+}
+
+function check_syntax_python ()
+{
+    local return_status=0
+    file=$1
+
+    # Compile the file to see if the syntax is valid
+    # py_compile does not seem to check includes, so
+    # no need to change directories like for perl
+    python3 -m py_compile $file >/dev/null 2>&1 || {
+        hook_error "$(
+            color_echo red "Error processing syntax: $file"
+            echo "Hint: Check syntax with \`python3 -m py_compile $file\`"
+        )"
+    }
+}
+
+function check_style_python ()
+{
+    # Most of this was copied from check_style_perl(), adapted for pylint
+    local return_status=0
+    file=$1
+
+    # Check if the file passes error% and warning% for perlcritic
+    lines=`cloc $file --json | jq -r '.SUM.code' | tr -d '\n'`
+    pylint=`pylint --msg-template="{C}" --rcfile=/etc/profile.d/vimrc/plugins/syntastic_checkers/pylintrc $file`
+
+    # Match the output against a regex
+    errors=`echo "$pylint" | grep '^[EF]' | wc -l`
+    warnings=`echo "$pylint" | grep '^[CRW]' | wc -l`
+
+    valid_style_error_count=`echo "scale=2; $lines * ($valid_style_error_percent / 100)" | bc`
+    valid_style_error_count=`echo "scale=0; $valid_style_error_count/1" | bc`
+
+    valid_style_warning_count=`echo "scale=2; $lines * ($valid_style_warning_percent / 100)" | bc`
+    valid_style_warning_count=`echo "scale=0; $valid_style_warning_count/1" | bc`
+
+    error_message=""
+
+    if [ -n "$errors" ] ; then
+        error_test=`echo "$errors <= $valid_style_error_count" | bc`
+
+        if [[ "$error_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many errors: $errors\033[1;33m ($valid_style_error_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    if [ -n "$warnings" ] ; then
+        warning_test=`echo "$warnings <= $valid_style_warning_count" | bc`
+
+        if [[ "$warning_test" == "0" ]] ; then
+            error_message+="\033[1;31mToo many warnings: $warnings\033[1;33m ($valid_style_warning_count allowed)\033[0m\n"
+            return_status=1
+        fi
+    fi
+
+    # trim final "\n"
+    error_message=${error_message%??}
+
+    if [[ "$return_status" != "0" ]] ; then
+        hook_error "$(
+            color_echo red "Found style problems in file '$file'"
+            color_echo red "$error_message"
+            echo "Hint: See problems with \`pylint --rcfile=/etc/profile.d/vimrc/plugins/syntastic_checkers/pylintrc \\"
+            echo "                                 -f colorized $file"
+        )"
+    fi
+}
+
+# MAIN PROGRAM
+
+get_files_to_check files '.*' 'ACMRT'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+for file in $files ; do
+
+    matches_glob_element "$file" "${ignore_files[@]}"
+    if [[ $? == 0 ]] ; then
+        # ignore file
+        continue
+    fi
+
+    # syntax checking
+    matches_glob_element "$file" "${ignore_syntax_files[@]}"
+    if [[ $? != 0 ]] ; then
+        case $file in
+            *.php)
+                check_syntax_php $file
+                ;;
+            *.js)
+                check_syntax_js $file
+                ;;
+            *.pl|*.pm)
+                check_syntax_perl $file
+                ;;
+            *.json)
+                check_syntax_json $file
+                ;;
+            *.py)
+                check_syntax_python $file
+                ;;
+            *)
+                # skip
+                ;;
+        esac
+    fi
+
+    # style checking
+    matches_glob_element "$file" "${ignore_style_files[@]}"
+    if [[ $? != 0 ]] ; then
+        if [[ -z $skip_style_checks ]] ; then
+            case $file in
+                *.php)
+                    check_style_php $file
+                    ;;
+                *.js)
+                    check_style_js $file
+                    ;;
+                *.pl|*.pm)
+                    check_style_perl $file
+                    ;;
+                *.json)
+                    # do nothing currently
+                    ;;
+                *.py)
+                    check_style_python $file
+                    ;;
+                *)
+                    # skip
+                    ;;
+            esac
+        fi
+    fi
+
+done
+
+hook_exit

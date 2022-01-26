@@ -1,0 +1,50 @@
+These are the NeadWerx Commit hooks.
+These hooks are used to check our committed code at
+various stages through the commit process.
+Below is a list of the hooks, how to create one,
+where to place it, and how to deploy it.
+
+Hook Types:
+  - Pre Commit         : These hooks run first and should be
+                         used to verify the state of the code
+                         before the commit is generated.
+                         Note: This step is skipped if the
+                         --no-verify flag is passed to git commit.
+
+  - Prepare Commit Msg : These hooks run during the commit message step.
+                         These are used to check the quality of the code
+                         and the commit message. These hooks are only run
+                         during a true commit and are skipped for a merge.
+
+  - Post Commit        : These hooks are run after the commit has been created.
+                         These are used to notify people of the commit status,
+                         if code checks were skipped, and other commit info.
+
+
+How to create a hook:
+  All new hooks should be placed into their
+  respective directory. The name should follow
+  priority naming conventions like those used for
+  drivers. Thus the first two characters of a name
+  should be the priority level (order) that the script
+  should run. This is followed by a dash, then the
+  human readable name for the script. Higher priority
+  means that the script will run sooner in the process.
+  Any scripts that do not match the naming convention
+  will be run last in some order. Some examples:
+
+    00-my_last_script
+    99-my_first_script
+    some_script_that_runs
+    10-a_mildly_important_script
+
+  - Pre Commit: These hooks are not passed any arguments.
+  - Prepare Commit Msg: These hooks are passed a single argument, the commit message.
+  - Post Commit: These hooks are not passed any arguments.
+
+Deploying a new hook:
+  These hooks are managed through our puppet server. Thus you
+  need to log into the puppet server and update the standards
+  repo inside of one of the manifests. If you have trouble
+  just ask <kirk@merchlogix.com> or <devops@merchlogix.com>
+  for assistance.

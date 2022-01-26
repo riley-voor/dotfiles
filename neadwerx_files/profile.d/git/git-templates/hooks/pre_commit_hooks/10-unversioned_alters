@@ -1,0 +1,49 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks permissions on modifying usversioned sql alters
+# based on the current branch
+
+# MAIN PROGRAM
+
+branch=`git rev-parse --abbrev-ref HEAD`
+get_files_to_check files 'sql/unversioned/'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$files" ] ; then
+    exit 0
+fi
+
+hook_set_changes_hash "$files"
+skip_hook_if_record_matches
+
+# figure out the branch 'type' that we're currently on
+# then check various things
+case $branch in
+    bug_*) # bug branches
+          # Users may not touch unversioned alters in bug branches
+          get_files_to_check disallowed_files 'sql/unversioned/' 'ACTUXB'
+          if [ -n "$disallowed_files" ] ; then
+              hook_error "$(
+                  color_echo red "In a bug branch, unversioned SQL files may only be deleted, modified, or renamed!"
+                  color_echo yellow "Offending files:"
+                  print_files "\t" "$disallowed_files"
+              )"
+          fi
+          ;;
+    v*) # version branches
+        # Users may not touch unversioned alters in versioned branches
+        hook_error "$(
+            color_echo red "In a versioned branch, unversioned SQL file may not be modified!"
+            color_echo yellow "Offending files:"
+            print_files "\t" "$files"
+        )"
+        ;;
+    *) # feature branches
+       # No restrictions
+       ;;
+esac
+
+hook_exit

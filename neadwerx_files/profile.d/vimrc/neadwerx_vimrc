@@ -1,0 +1,18 @@
+" Author: Harrison Katz <harrison@merchlogix.com>
+"
+" This is the standard vimrc file for Nead Werx.
+" In this file you will find many helpful tools and additions to vim
+" that will speed up your learning and improve your overall coding.
+" Also in here are ways to help keep Nead Werx code styles standard across
+" many filetypes. If you have any questions at all about this file
+" please feel free to reach out to the author. Enjoy!
+
+" add vimrc standard to runtimepath
+let &runtimepath.=',/etc/profile.d/vimrc'
+
+" source various parts of the vimrc
+runtime! parts/*.vim
+runtime! parts/augroups/*.vim
+runtime! parts/misc/*.vim
+runtime! parts/filetypes/*.vim
+runtime! parts/functions/*.vim

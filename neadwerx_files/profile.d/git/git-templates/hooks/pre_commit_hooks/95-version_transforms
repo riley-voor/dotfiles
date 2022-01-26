@@ -1,0 +1,46 @@
+#!/bin/bash
+
+source $GIT_DIR/hooks/lib.sh
+source $GIT_DIR/hooks/commit_hook_lib.sh
+
+# This script checks for the following:
+# 1. Was the API changed in any way? (always true if files)
+# 2. Is there a version transform being committed with this change?
+# 3. If not, ask about this and warn the user!
+
+# MAIN PROGRAM
+get_files_to_check api_changes '^api/(?!versions)' 'MRD'
+
+# if there are no files, then don't worry about it :)
+if [ -z "$api_changes" ] ; then
+    exit 0
+fi
+
+get_files_to_check transforms 'api/versions/' 'AMC'
+
+hook_set_changes_hash "$api_changes" "$transforms"
+skip_hook_if_record_matches
+
+# if there are no transforms being committed, then alert and ask user for confirmation
+if [ -z "$transforms" ] ; then
+    wiki_link='https://neadwerx.atlassian.net/wiki/x/nCSeAQ'
+    hook_error "$(
+        color_echo red "Attention: You are committing a change to the API without also committing a version transform!"
+        color_echo red "Changes to the API without version transforms risk breaking our mobile apps and customer integrations!"
+        color_echo yellow "Version transforms should be used in the following cases:"
+        echo -e "\t- any change to a required input/output"
+        echo -e "\t- any change to docblock emebds"
+        echo -e "\t- any change to docblock traits"
+        echo -e "\t- any change to docblock sets"
+        echo -e "\t- any change to docblock validators"
+        echo -e "\t- any change to a route handle"
+        echo -e "\t- deletion of input/output"
+        echo -e "\t- rename of input/output (delete and add)"
+        echo -e "\t- rename of search view fields param"
+        color_echo yellow "Basically, the only case to NOT write a transform is if you've added an OPTIONAL input/output."
+        color_echo green "If you need help writing or testing a version transform, please see the wiki here:"
+        color_echo green "\t$wiki_link"
+    )"
+fi
+
+hook_exit
