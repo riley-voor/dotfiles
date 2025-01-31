@@ -1,0 +1,10 @@
+[user]
+	email = riley@freewill.com
+[pull]
+	rebase = false
+[color "status"]
+	untracked = red bold
+  added = green bold
+  updated = green bold
+  changed = red bold
+  header = blue bold

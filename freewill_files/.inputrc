@@ -1,0 +1,8 @@
+# Tab completes forward, shift+tab completes backward
+TAB: menu-complete
+"\e[Z": menu-complete-backward
+
+# Super cool auto complete settings
+set show-all-if-ambiguous on
+set completion-ignore-case on
+set colored-completion-prefix on
