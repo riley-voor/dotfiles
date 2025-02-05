@@ -4,6 +4,19 @@
 # make sure that git actually checks inside subdirectories
 !*/
 
+# for some reason these directories keep being tracked despite my best efforts so I just specified them all here.
+Projects/
+vim/
+.vim/bundle/YouCompleteMe/
+.vim/bundle/ale/
+.vim/bundle/nord-vim/
+.vim/bundle/vim-autotag/
+.vim/bundle/vim-commentary/
+.vim/bundle/vim-easy-align/
+.vim/bundle/vim-fugitive/
+.vim/bundle/vim-gitgutter/
+.vim/bundle/vimspector/
+
 # don't ignore these files
 !.bash_profile
 !.bashrc
