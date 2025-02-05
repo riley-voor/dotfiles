@@ -8,7 +8,6 @@
 --exclude=vendor/*
 --exclude=node_modules/*
 --exclude=**/node_modules/*
---exclude=**/freewill-client/*
 --exclude=db/*
 --exclude=log/*
 --exclude=\*.min.\*

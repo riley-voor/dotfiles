@@ -1,11 +1,11 @@
 [user]
-	name = Riley Voor
-	email = rvoor@neadwerx.com
-[color]
-	status = always
-	diff = auto
-[filter "lfs"]
-	smudge = git-lfs smudge -- %f
-	process = git-lfs filter-process
-	required = true
-	clean = git-lfs clean -- %f
+  name = Riley Voor
+  email = riley.voor@gmail.com
+[pull]
+  rebase = false
+[color "status"]
+  untracked = red bold
+  added = green bold
+  updated = green bold
+  changed = red bold
+  header = blue bold

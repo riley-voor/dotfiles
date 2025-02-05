@@ -1,3 +1,0 @@
-/var/www/vhosts/xerp.rvoor.neadwerx.com	100
-/var/www/vhosts/xerp.rvoor.neadwerx.com	100
-/var/www/vhosts/xerp.rvoor.neadwerx.com	100
