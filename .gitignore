@@ -2,22 +2,93 @@
 *
 
 # Don't ignore these files
-!.gitignore
-!.vimrc
-!.ctags
-!.git-completion.bash
-!.bashrc
 !.bash_profile
-!.psqlrc
-!.inputrc
-!.gitconfig
-!.config/pgcli/config
+!.bashrc
 !.config/htop/htoprc
+!.config/pgcli/config
+!.ctags
+!.gitconfig
+!.gitignore
+!.git-completion.bash
+!.github/README.md
+!.inputrc
+!.tmux.conf
+!.tmux-powerlinerc
+!.vimrc
 
 # Don't ignore these directories
 # I have to specify each level of files
 # deep that I want so I just did a ton so
 # that way i probably won't miss anything
+
+# .riley-scripts/
+!.riley-scripts/*
+!.riley-scripts/*/*
+!.riley-scripts/*/*/*
+!.riley-scripts/*/*/*/*
+!.riley-scripts/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+
+# .tmux/plugins/tpm/
+!.tmux/plugins/tpm/*
+!.tmux/plugins/tpm/*/*
+!.tmux/plugins/tpm/*/*/*
+!.tmux/plugins/tpm/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/plugins/tpm/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+
+# .tmux/tmux-powerline-customize/
+!.tmux/tmux-powerline-customize/*
+!.tmux/tmux-powerline-customize/*/*
+!.tmux/tmux-powerline-customize/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
 # .vim/
 !.vim/Bundle/*
@@ -42,25 +113,3 @@
 !.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 !.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
-# .riley-scripts/
-!.riley-scripts/*
-!.riley-scripts/*/*
-!.riley-scripts/*/*/*
-!.riley-scripts/*/*/*/*
-!.riley-scripts/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
