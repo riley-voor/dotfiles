@@ -1,6 +1,9 @@
 # ignore everything by default
 *
 
+# make sure that git actually checks inside subdirectories
+!*/
+
 # Don't ignore these files
 !.bash_profile
 !.bashrc
@@ -10,11 +13,13 @@
 !.gitconfig
 !.gitignore
 !.git-completion.bash
-!.github/README.md
 !.inputrc
 !.tmux.conf
 !.tmux-powerlinerc
 !.vimrc
+
+# TODO testing
+!.github/README.md
 
 # Don't ignore these directories
 # I have to specify each level of files
