@@ -1,7 +1,7 @@
-# ignore everything by default
+# Ignore everything by default
 *
 
-# make sure that git actually checks inside subdirectories
+# Make sure that git actually checks inside subdirectories
 !*/
 
 # Don't ignore these files
@@ -11,6 +11,7 @@
 !.config/pgcli/config
 !.ctags
 !.gitconfig
+!.github/README.md
 !.gitignore
 !.git-completion.bash
 !.inputrc
@@ -18,12 +19,10 @@
 !.tmux-powerlinerc
 !.vimrc
 
-# TODO testing
-!.github/README.md
-
 # Don't ignore these directories
+
 # I have to specify each level of files
-# deep that I want so I just did a ton so
+# deep that I want so I just did 20 levels so
 # that way i probably won't miss anything
 
 # .riley-scripts/
