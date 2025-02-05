@@ -1,10 +1,10 @@
-# Ignore everything by default
+# ignore everything by default
 *
 
-# Make sure that git actually checks inside subdirectories
+# make sure that git actually checks inside subdirectories
 !*/
 
-# Don't ignore these files
+# don't ignore these files
 !.bash_profile
 !.bashrc
 !.config/htop/htoprc
@@ -19,9 +19,9 @@
 !.tmux-powerlinerc
 !.vimrc
 
-# Don't ignore these directories
+# don't ignore these directories
 
-# I have to specify each level of files
+# i have to specify each level of files
 # deep that I want so I just did 20 levels so
 # that way i probably won't miss anything
 
@@ -95,25 +95,25 @@
 !.tmux/tmux-powerline-customize/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
 # .vim/
-!.vim/Bundle/*
-!.vim/Bundle/*/*
-!.vim/Bundle/*/*/*
-!.vim/Bundle/*/*/*/*
-!.vim/Bundle/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.vim/Bundle/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*
+!.vim/bundle/Vundle.vim/*/*
+!.vim/bundle/Vundle.vim/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.vim/bundle/Vundle.vim/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
