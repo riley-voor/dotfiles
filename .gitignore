@@ -39,27 +39,27 @@ vim/
 # that way i probably won't miss anything
 
 # .riley-scripts/
-!.riley-scripts/*
-!.riley-scripts/*/*
-!.riley-scripts/*/*/*
-!.riley-scripts/*/*/*/*
-!.riley-scripts/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley-scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*
+!.riley_scripts/*/*
+!.riley_scripts/*/*/*
+!.riley_scripts/*/*/*/*
+!.riley_scripts/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
 # .tmux/plugins/tpm/
 !.tmux/plugins/tpm/*
