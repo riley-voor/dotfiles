@@ -6,6 +6,9 @@
 
 # for some reason these directories keep being tracked despite my best efforts so I just specified them all here.
 Projects/
+Desktop/
+Downloads/
+Pictures/
 vim/
 .vim/bundle/YouCompleteMe/
 .vim/bundle/ale/
@@ -39,27 +42,27 @@ vim/
 # that way i probably won't miss anything
 
 # .riley-scripts/
-!.riley_scripts/*
-!.riley_scripts/*/*
-!.riley_scripts/*/*/*
-!.riley_scripts/*/*/*/*
-!.riley_scripts/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
-!.riley_scripts/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*
+!.riley_utils/*/*
+!.riley_utils/*/*/*
+!.riley_utils/*/*/*/*
+!.riley_utils/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
+!.riley_utils/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*/*
 
 # .tmux/plugins/tpm/
 !.tmux/plugins/tpm/*

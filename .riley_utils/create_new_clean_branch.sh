@@ -24,8 +24,9 @@ then
   exit 1
 fi
 
-# Checkout develop and pull to make sure it's up to date.
-echo_command "git checkout develop && git pull"
+# Checkout master and pull to make sure it's up to date.
+# TODO update this script to take in main branch name as an optional param in case we are in a repo that doesn't use master as the main branch name.
+echo_command "git checkout master && git pull"
 git checkout develop && git pull
 
 # Make sure there are no conflicts before we proceed.

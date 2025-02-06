@@ -14,8 +14,9 @@
 ### SCRIPT START ###
 ####################
 
-# The base branch for all our development branches in the freewill repo is "develop".
-BASE_BRANCH="develop"
+# The base branch for all most repositories is "master".
+# TODO gotta get this from an optional param in case we are in a repo that doesn't use this as the base branch name.
+BASE_BRANCH="master"
 
 # Grab the current branch name.
 CURRENT_BRANCH=$(git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/\1/')
