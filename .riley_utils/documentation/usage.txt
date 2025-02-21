@@ -1,0 +1,16 @@
+## Git/Repo tools:
+  new-branch <branchname>   Creates a fresh git branch
+  branch <branchname>       Switches to a git branch
+  clean                     Deletes your local orphaned git branches
+  update-repo               Installs any new dependencies
+  fast-forward              Pulls the latest updates from the `develop` branch and merges them into your branch
+
+## Vim tools:
+  vim-find <filename>       Searches current directory for a file by name then opens it in vim
+
+## Tmux tools:
+  coding-start              Launches and configures a standard coding tmux session
+  coding-end                Closes an existing coding tmux session
+
+## Managing riley_utils
+  config                    Update your personal details for this tool

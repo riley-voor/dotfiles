@@ -1,0 +1,4 @@
+# fw clean
+Usage: fw clean
+
+Clean up orphaned local git branches. Asks for confirmation before deleting.

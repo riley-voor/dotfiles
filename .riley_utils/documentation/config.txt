@@ -1,0 +1,8 @@
+# rv config
+Usage: rv config
+
+Allows you to redefine your riley-utils environment variables that help this utility
+know who you are and where to find things.
+
+What variables?
+    EMAIL_ADDRESS

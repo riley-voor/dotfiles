@@ -7,16 +7,17 @@
 
 # NOTE: $(dirname "$0") is how we specify the current directory even if we are executing
 # this script from a different directory (which we almost certainly are lol).
-. $(dirname "$0")/utils.sh
-
+. $(dirname "$0")/common/utils.sh
+. $(dirname "$0")/common/env_vars.sh 
+fetch_env_vars
 
 ####################
 ### SCRIPT START ###
 ####################
 
 # Move to the main freewill project repo.
-echo_command "cd ~/Projects/freewill-api-v2"
-cd ~/Projects/freewill-api-v2/
+echo_command "cd $API_V2_DIRECTORY"
+cd $API_V2_DIRECTORY
 
 # Grab the current branch name.
 CURRENT_BRANCH=$(git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/\1/')
@@ -108,16 +109,6 @@ then
   echo_command "git stash pop --quiet"
   git stash pop --quiet
 fi
-
-# Hide the initial logs cuz they aren't very useful
-for i in {1..20};
-do
-  tmux send-keys -t 2 "Enter"
-done
-
-# TODO do 1password sign in and show my dev sites login to get IT off my back about not actually using 1password
-op signin
-op item get "Local Dev Site"
 
 # Clear away the npm installation text cuz its real ugly.
 echo_command "clear"

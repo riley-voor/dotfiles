@@ -1,0 +1,4 @@
+# rv fast-forward
+Usage: rv fast-forward
+
+Keeps your feature branch up to date with the latest changes in master.

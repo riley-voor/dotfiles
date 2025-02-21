@@ -1,14 +1,14 @@
 #!/bin/sh
 
-
 ################
 ### INCLUDES ###
 ################
 
 # NOTE: $(dirname "$0") is how we specify the current directory even if we are executing
 # this script from a different directory (which we almost certainly are lol).
-. $(dirname "$0")/utils.sh
-
+. $(dirname "$0")/common/utils.sh
+. $(dirname "$0")/common/env_vars.sh
+fetch_env_vars
 
 ####################
 ### SCRIPT START ###
@@ -52,13 +52,13 @@ fi
 
 # Grab all the remote branches that fit the naming scheme used for my development branches "riley/BRANCH-NAME".
 echo_command "Finding orphaned local branches..."
-REMOTE_BRANCHES=$(git ls-remote --quiet | egrep -o "refs\/heads\/riley\/.+" | egrep -o "riley\/.+")
+REMOTE_BRANCHES=$(git ls-remote --quiet | egrep -o "refs\/heads\/$GITHUB_BRANCH_IDENTIFIER\/.+" | egrep -o "$GITHUB_BRANCH_IDENTIFIER\/.+")
 
 # Transfer our remote branches into an array.
 REMOTE_BRANCHES_ARRAY=($(echo $REMOTE_BRANCHES | tr " " "\n"))
 
-# Grab all the local branches that fit the naming scheme used for my development branches "riley/BRANCH-NAME".
-LOCAL_BRANCHES=$(git branch | egrep -o "riley\/.+")
+# Grab all the local branches that fit the naming scheme used for my development branches "$GITHUB_BRANCH_IDENTIFIER/BRANCH-NAME".
+LOCAL_BRANCHES=$(git branch | egrep -o "$GITHUB_BRANCH_IDENTIFIER\/.+")
 
 # Transfer our local branches into an array.
 LOCAL_BRANCHES_ARRAY=($(echo $LOCAL_BRANCHES | tr " " "\n"))

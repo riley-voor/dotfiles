@@ -1,0 +1,9 @@
+# rv branch
+Usage: rv branch [--new|--existing] <branchname>
+
+Change to a new or existing branch of the current repo.
+
+## Options:
+  -n, --new       Creates a new branch. Exits if the branch you supply already exists.
+  -e, --existing  Doesn't create a new branch. Exits if the branch you supply doesn't exist yet.
+

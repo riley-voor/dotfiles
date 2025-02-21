@@ -1,0 +1,5 @@
+# rv update-repo
+Usage: rv update-repo
+
+Runs `npm install` for the current repo.
+Especially useful after running `rv fast-forward`

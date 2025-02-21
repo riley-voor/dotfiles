@@ -1,0 +1,4 @@
+# rv coding-end
+Usage: rv coding-end
+
+Closes an existing standard coding tmux session.

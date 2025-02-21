@@ -1,0 +1,9 @@
+# rv vim-find
+Usage: rv vim-find <filename> [<subdirectorypath>]
+
+Search for a file and open it in vim.
+
+## Options:
+  <filename>           The name of the file to be opened.
+  [<subdirectorypath>] If provided, specifies the subdirectory of the current directory that will be searched.
+
