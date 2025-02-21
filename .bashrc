@@ -19,6 +19,7 @@ fi
 export PATH=/usr/local/bin:$PATH
 export PATH=./node_modules/.bin:$PATH
 
+# TODO update this for linux
 # Source bash completion
 [[ -r "/opt/homebrew/etc/profile.d/bash_completion.sh" ]] && . "/opt/homebrew/etc/profile.d/bash_completion.sh"
 
@@ -33,12 +34,13 @@ vimmod () {
   vimmodified $1
 }
 
+# TODO move this to riley_utils
 # vim shortcut alias that opens all the files that 'git status' lists as modified
 # TODO update this to tell you "theres no modified files" if it doesn't find any files to open.
 # TODO update this so when you've added new files in a new directory, it opens the files rather than just the directory.
 vimmodified() {
   print_usage() {
-    printf "Only acceptable flag is the optional \"-a\" flag which (includes all files instead of only modified ones)"
+    printf "Only acceptable flag is the optional \"-a\" flag which (includes untracked files as well as modified ones)"
   }
 
   # Get the -a param to figure out if we are only opening modified files or if we are also including untracked files.
@@ -116,9 +118,10 @@ vimmodified() {
 # Opens a file based on its name by recursively searching
 # through the current directory to find said file.
 vimfind() {
-  ~/scripts/open_file_in_vim_by_name_search.sh $1 $2
+  rv vim-find $1 $2
 }
 
+# TODO move this to riley_utils
 # Opens vim to the location of a the specified ctag.
 vimtag() {
   vim -t $1
@@ -142,27 +145,7 @@ alias la="ls -a"
 alias ll="ls -l"
 alias ls="ls --color"
 
-# alias for moving to my local freewill repo and starting up a tmux session
-alias fwstart="~/scripts/start_freewill_tmux_coding_session.sh"
-alias fwstop="tmux kill-session -t coding"
-alias fwupdaterepo="~/scripts/keep_freewill_repo_up_to_date.sh"
-alias fwupdatedb="~/scripts/keep_freewill_local_db_update_to_date.sh"
-
-# aliases for freewill repo git management
-alias fwmerge="~/scripts/merge_updated_develop_into_current_branch.sh"
-alias fwee="~/scripts/set_freewill_ephemeral_environment_to_current_branch.sh"
-fwnewbranch() {
-    ~/scripts/create_new_clean_freewill_branch.sh $1
-}
-
-# aliases for managing api client test/prod versions.
-alias fwinstallprodclient="~/scripts/install_prod_client.sh"
-alias fwnewlinkclient="~/scripts/generate_and_link_new_api_link_client.sh"
-alias fwremovelinkclient="~/scripts/remove_api_link_client.sh"
-alias fwcleanbranches="~/scripts/clean_up_orphaned_local_git_branches.sh"
-
-# TODO maybe write a script that auto pulls the uat db and updates your local db to match it (probably it should also auto-create a backup of your existing local db) (see the src/app/db/ readme for details on how to do this. (also gonna want to recreate my local account for my dev environment when I do this because otherwise itll get overwritten by the uat pull)
-
+# TODO gotta move this to riley_utils
 # Quick little helper to clear the logs tailing pane if it
 # has stuff in it that I don't wanna see anymore.
 hidelogs() {
@@ -175,40 +158,12 @@ hidelogs() {
 # Fixes postgres after it has been shutdown improperly maybe by a
 # crash or just not closing tmux before I shut down my laptop.
 fixpostgres() {
+  # TODO gotta update this to work on linux
   rm /opt/homebrew/var/postgres/postmaster.pid
   brew services restart postgres
 }
 
-
-# aliases for ease of navigation inside freewill repo.
-alias root="cd ~/Projects/freewill-api-v2/"
-alias app="cd ~/Projects/freewill-api-v2/src/app/"
-alias web="cd ~/Projects/freewill-api-v2/src/web/"
-alias pdf="cd ~/Projects/freewill-api-v2/src/pdf/"
-alias pdfv1="cd ~/Projects/freewill-api-v2/src/pdfv1/"
-alias admin="cd ~/Projects/freewill-api-v2/src/admin-console/"
-alias portal="cd ~/Projects/freewill-api-v2/src/portal/"
-alias crypto="cd ~/Projects/freewill-api-v2/src/crypto-web/"
-alias header="cd ~/Projects/freewill-api-v2/src/headerAppender/"
-alias prerender="cd ~/Projects/freewill-api-v2/src/prerender/"
-alias estately="cd ~/Projects/freewill-api-v2/src/estately-portal/"
-
-# alias for command that logs you into aws via command line for lambda or serverless stuff or something.
-# NOTE: might want to run "export AWS_REGION=us-west-2" after you execute this alias depending on what you want to test.
-alias fwawslogin="aws-google-auth --bg-response js_enabled -a --no-cache -I C01oqm4zv -R us-west-2 -S 599960580392 -u riley@freewill.com && export AWS_PROFILE=sts"
-# NOTE: if this outputs a little json lookin thing that has your email in it and "sts" and such then you are successfully logged in to aws.
-alias fwtestloginsuccess="aws sts get-caller-identity"
-
-# now i can run "athena thd" and connect to the thd db on the athena host
-athena() {
-    pgcli -U postgres -h athena -d $1
-}
-
-# make multitail behave like the taile script did
-mtaile() {
-    multitail --mergeall /var/log/httpd/$1*-error_log
-}
-
+# TODO gotta move this to riley_utils
 # Custom tail command for seeing all the local fw npm/node error logs.
 fwtaillogs() {
     # These are the lines we want to hide from our tail output because they are always
@@ -244,15 +199,11 @@ fwtaillogs() {
     tail -f ~/fw_error_logs/*.log 2>/dev/null | grep -v "${GREP_PARAM}" --line-buffered | perl -00 -pe ''
 }
 
+# TODO gotta move this to riley_utils
 alias fwclearlogs="echo -n '' | tee ~/fw_error_logs/*.log >/dev/null"
 
-alias pgcli-fw-local="pgcli -U postgres -h 127.0.0.1 -d freewill_dev"
-alias pgcli-fw-uat="pgcli -U riley -h freewill-clusteruat.cy38snaamnvp.us-west-2.rds.amazonaws.com -p 5432 -d uat"
-alias pgcli-fw-prod="pgcli -U riley -h freewill-prod-v2.cy38snaamnvp.us-west-2.rds.amazonaws.com -p 5432 -d thanos"
-alias pgcli-fw-ee="pgcli -U riley -h freewill-clusterthree.cy38snaamnvp.us-west-2.rds.amazonaws.com -p 5432 -d riley"
-alias pgcli-fw-integrations="pgcli -U svc_freewill_api -h freewill-dms-replica.cy38snaamnvp.us-west-2.rds.amazonaws.com -p 5432 -d productionreplica"
-
 # Make sure we're using exuberent ctags rather than the default MacOS ctags
+# TODO gotta figure out whether we need this or something like it for linux once we see if we can get vim ctags working again.
 alias ctags='/opt/homebrew/bin/ctags'
 
 # enable globstar for easy recursive directory commands
@@ -319,7 +270,7 @@ function bg_proc_bash_prompt_section() {
 
     # If we have a script name or some other weird case where the actual proc name isn't
     # as helpful as we'd like it to be, we substitute it here for the more useful name.
-    if [[ $BG_PROC_COMMAND == '~/scripts/open_file_in_vim_by_name_search.sh' ]]; then
+    if [[ $BG_PROC_COMMAND == '~/.riley_scripts/open_file_in_vim_by_name_search.sh' ]]; then
       BG_PROC_COMMAND='vim'
     fi
 
@@ -330,8 +281,6 @@ function bg_proc_bash_prompt_section() {
 }
 
 # TODO maybe this character? ◣, ▶, ⮀
-# TODO testing
-# TODO maybe update the prompt to show when you've backgrounded a process
 # TODO maybe update the prompt to show when you have items in your git stash
 PS1='\033[0;32m\u@\h\033[m\033[1;34m \w\033[m\033[0;32m $(git_bash_prompt_section)\033[m\033[0;33m $(bg_proc_bash_prompt_section)\033[m\033[1;34m\n\$ '
 #PS1='\e[1;35m\e[48;5;147m \u@\h \e[m\e[1;34m \w \e[1;32m $(git_bash_prompt_section) \e[m\e[1;34m\n\$ '
@@ -341,11 +290,12 @@ PS1='\033[0;32m\u@\h\033[m\033[1;34m \w\033[m\033[0;32m $(git_bash_prompt_sectio
 # prompt. That way your prompt coloring won't color the output of the command until its overwritten.
 trap "echo -n \"$(tput sgr0)\"" DEBUG
 
+# TODO would like to move to riley_utils eventually (see rv ssh-connect idea in the riley_utils README.md)
 # for ssh-ing into audrey's personal server where we host audreyflix
 alias sshaudreyflix="ssh -t riley@www.audreyflix.com \"bash\""
 
 # for compiling C++ with warnings and errors and so on
 function compilecpp() {
-    g++ -Wall -Wextra -Werror -o $1.out $1.cpp 
+    g++ -Wall -Wextra -Werror -o $1.out $1.cpp
 }
 export -f compilecpp
