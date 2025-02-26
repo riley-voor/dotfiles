@@ -20,12 +20,11 @@ cd $THIS_SCRIPT_DIR
 # Let the user know that they might need to provide their sudo password at some point.
 echo_warning "NOTE: This script may prompt you for your sudo password!"
 
+# TODO add flag to install script that allows the user to skip installing dependencies.
 # Install the CLI tools that this project depends on
 echo_command "Installing dependencies. NOTE: This may take a while..."
-if which apt > /dev/null; then
-  echo_warning "Using Advanced Package Tool (apt)"
-else
-  echo_error "Advanced Package Tool (apt) not found"
+if ! which apt-get > /dev/null; then
+  echo_error "Package manager apt-get not found. This is required to install dependencies."
   exit 1
 fi
 
@@ -47,7 +46,10 @@ fi
 echo
 
 # Call the environment variables set up.
-./scripts/config_riley_utils.sh
+if ! ./scripts/config_riley_utils.sh;
+then
+  exit 1;
+fi
 
 # Set up the "rv" command that points to the main.sh script.
 echo_command "Installing 'rv' command"
