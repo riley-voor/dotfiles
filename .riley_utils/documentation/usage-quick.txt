@@ -1,6 +1,0 @@
-Usage: rv <command> [<args>] [--help]
-
-# Commands Available
-  new-branch | branch | clean | update-repo |
-  fast-forward | vim-find | coding-start |
-  coding-end | config

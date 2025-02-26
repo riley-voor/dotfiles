@@ -3,7 +3,12 @@ export RV_UTILS_PATH=$(dirname "$(readlink -f $0)")
 . $RV_UTILS_PATH/scripts/common/print_help.sh
 . $RV_UTILS_PATH/scripts/common/utils.sh
 
-print_help $@ {usage-quick,usage}
+if [ "$1" = '--help' ] || [ "$1" = '-h' ];
+then
+  print_logo
+  print_help 'general'
+  exit
+fi
 
 COMMAND=$1
 shift

@@ -35,7 +35,7 @@ eval set -- "$VALID_ARGS"
 while [ : ]; do
   case "$1" in
     -h | --help)
-        print_help_sections 'branch'
+        print_help 'branch'
         shift;
         ;;
     -n | --new)
