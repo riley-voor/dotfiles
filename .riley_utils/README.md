@@ -49,5 +49,5 @@ To add a new command/script, add the command to `main.bash` to the end of the `C
 Be sure to add a file with the name `<your_new_command>.txt` to the `documentation` folder, and describe how to use your command/script.
 
 # List of To-Be-Implemented Script Ideas
-- rv db-connect `db-nickname` that pulls from a file somewhere with a list of dbs where we give them a nickname and store all their info in that file and it lets us easily connect to dbs that we've already connected to before.
-- rv ssh-connect `ssh-destination-nickname` that pulls from a file somewhere with a list of ssh destinations where we give them a nickname and store all their info in that file and it lets us easily connect to ssh destinations that we've already connected to before.
+- `rv db-connect <db-nickname>` that pulls from a file somewhere with a list of dbs where we give them a nickname and store all their info in that file and it lets us easily connect to dbs that we've already connected to before.
+- `rv ssh-connect <ssh-destination-nickname>` that pulls from a file somewhere with a list of ssh destinations where we give them a nickname and store all their info in that file and it lets us easily connect to ssh destinations that we've already connected to before.
