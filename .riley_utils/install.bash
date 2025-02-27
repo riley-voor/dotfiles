@@ -6,7 +6,7 @@
 
 # NOTE: $(dirname "$0") is how we specify the current directory even if we are executing
 # this script from a different directory (which we almost certainly are lol).
-. $(dirname "$0")/scripts/common/utils.sh
+. $(dirname "$0")/scripts/common/utils.bash
 print_logo
 
 #####################
@@ -46,12 +46,12 @@ fi
 echo
 
 # Call the environment variables set up.
-if ! ./scripts/config_riley_utils.sh;
+if ! ./scripts/config_riley_utils.bash;
 then
   exit 1;
 fi
 
-# Set up the "rv" command that points to the main.sh script.
+# Set up the "rv" command that points to the main.bash script.
 echo_command "Installing 'rv' command"
 echo
 if [ -f /usr/local/bin/rv ];
@@ -59,8 +59,8 @@ then
   sudo rm /usr/local/bin/rv
 fi
 
-# Gets the aboslute path to the install script and then append main.sh
-MAIN_SH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )/main.sh"
+# Gets the aboslute path to the install script and then append main.bash
+MAIN_SH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )/main.bash"
 
 # Creates a symlink in /usr/local/bin/ which will allow our command to be accessible system wide.
 sudo ln -s "${MAIN_SH}" /usr/local/bin/rv

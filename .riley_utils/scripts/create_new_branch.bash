@@ -3,4 +3,4 @@
 ####################
 ### SCRIPT START ###
 ####################
-. $(dirname "$0")/change_to_branch.sh "$@" --new
+. $(dirname "$0")/change_to_branch.bash "$@" --new

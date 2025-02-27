@@ -6,12 +6,7 @@
 
 # NOTE: $(dirname "$0") is how we specify the current directory even if we are executing
 # this script from a different directory (which we almost certainly are lol).
-. $(dirname "$0")/common/utils.sh
-. $(dirname "$0")/common/git_utils.sh
-. $(dirname "$0")/common/env_vars.sh
-fetch_env_vars
-
-. $(dirname "$0")/common/print_help.sh
+. $(dirname "$0")/common/utils.bash
 
 
 #######################

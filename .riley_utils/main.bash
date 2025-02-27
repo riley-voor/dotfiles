@@ -1,8 +1,8 @@
 #!/bin/bash
 export RV_UTILS_PATH=$(dirname "$(readlink -f $0)")
-. $RV_UTILS_PATH/scripts/common/print_help.sh
-. $RV_UTILS_PATH/scripts/common/utils.sh
+. $RV_UTILS_PATH/scripts/common/utils.bash
 
+# If no command is provided but the help flag IS provided then show the general help output.
 if [ "$1" = '--help' ] || [ "$1" = '-h' ];
 then
   print_logo
@@ -10,6 +10,7 @@ then
   exit
 fi
 
+# Grab the command.
 COMMAND=$1
 shift
 
@@ -36,21 +37,21 @@ COMMANDS=(
 
 SCRIPTS=(
   # Git commands
-  "create_new_clean_branch.sh"
-  "change_to_branch.sh"
-  "clean_up_orphaned_local_git_branches.sh"
-  "update_repo.sh"
-  "update_current_branch.sh"
+  "create_new_clean_branch.bash"
+  "change_to_branch.bash"
+  "clean_up_orphaned_local_git_branches.bash"
+  "update_repo.bash"
+  "update_current_branch.bash"
 
   # Vim commands
-  "open_file_in_vim_by_name_search.sh"
+  "open_file_in_vim_by_name_search.bash"
 
   # Tmux commands
-  "start_tmux_coding_session.sh"
-  "end_tmux_coding_session.sh"
+  "start_tmux_coding_session.bash"
+  "end_tmux_coding_session.bash"
 
   # Riley Utils commands
-  "config_riley_utils.sh"
+  "config_riley_utils.bash"
 )
 
 # Get the index of the param command in the COMMANDS array.
@@ -67,14 +68,14 @@ SCRIPT_NAME=${SCRIPTS[COMMAND_INDEX]}
 
 if [[ ! $FOUND ]]; then
   echo_error "Couldn't find script $COMMAND"
-  print_help_section "usage-quick"
+  print_help "usage-quick"
   exit 1
 fi
 
 # If the first argument is help, print help
 if [ "$1" == "--help" ] || [ "$1" == '-h' ];
 then
-  print_help_sections $COMMAND
+  print_help $COMMAND
   exit 1
 fi;
 

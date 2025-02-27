@@ -139,3 +139,66 @@ parallel_commands() {
   echo
   echo "All processes have completed";
 }
+
+print_help()
+{
+  input="$RV_UTILS_PATH/documentation/${1}.txt"
+  while IFS= read -r line
+  do
+    # If the line of the .txt file starts with #, make it teal
+    # If the line of the .txt file starts with ##, make it green
+    if echo "${line}" | egrep -q "^\##.*$";
+    then
+      line_text=$(echo "$line" | sed -r 's/^## (.*)$/\1/')
+      echo -e "${BOLD_GREEN}$line_text"
+    elif echo "${line}" | egrep -q "^\#.*$";
+    then
+      line_text=$(echo "$line" | sed -r 's/^# (.*)$/\1/')
+      echo -e "${BOLD_TEAL}$line_text"
+    else
+      echo -e "${NO_COLOR}$line"
+    fi
+  done < "$input"
+}
+
+function new_branch() {
+  NEW_BRANCH_NAME=$1
+
+  # Checkout develop and pull to make sure it's up to date.
+  echo_command "git checkout master && git pull"
+  git checkout develop && git pull
+
+  # Make sure there are no conflicts before we proceed.
+  CONFLICTS=$(git ls-files -u | wc -l)
+  if [ $CONFLICTS -gt 0 ];
+  then
+    echo_error "There is a merge conflict in master. Aborting"
+    exit 1
+  fi
+
+  # Create our new branch off of our now up-to-date develop branch.
+  echo_command "git checkout -b ${NEW_BRANCH_NAME}"
+  git checkout -b $NEW_BRANCH_NAME
+
+  # Create our new branch on remote.
+  echo_command "git push --set-upstream origin ${NEW_BRANCH_NAME}"
+  git push --set-upstream origin $NEW_BRANCH_NAME
+
+  # Display our git status
+  echo_command "git status"
+  git status
+}
+
+# Pulls the values of the environment variables and puts them in accessible bash variables.
+#
+# LIST OF AVAILABLE ENVIRONMENT VARIABLES:
+# EMAIL_ADDRESS
+function fetch_env_vars()
+{
+  if [ -f $RV_UTILS_PATH/env.json ]; then
+      EMAIL_ADDRESS=$(cat $RV_UTILS_PATH/env.json | jq -r '."EMAIL_ADDRESS"') # for example, riley@freewill.com
+  else
+    echo_error "env.json file was not found in directory $RV_UTILS_PATH. Try running ${BOLD_TEAL}rv config${NO_COLOR}"
+    exit 1
+  fi
+}

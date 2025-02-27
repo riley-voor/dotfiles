@@ -6,7 +6,7 @@
 
 # NOTE: $(dirname "$0") is how we specify the current directory even if we are executing
 # this script from a different directory (which we almost certainly are lol).
-. $(dirname "$0")/common/utils.sh
+. $(dirname "$0")/common/utils.bash
 
 # Get the full absolute path to this script's directory so we can find the location for our env.json file.
 THIS_SCRIPT_DIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
