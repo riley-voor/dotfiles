@@ -1,3 +1,5 @@
+#!/bin/bash
+
 function new_branch() {
   NEW_BRANCH_NAME=$1
 

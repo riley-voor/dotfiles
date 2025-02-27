@@ -1,7 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
 . $RV_UTILS_PATH/scripts/common/utils.sh
 
+# TODO maybe consider moving this to the utils file?
 print_help()
 {
   input="$RV_UTILS_PATH/documentation/${1}.txt"
@@ -12,13 +13,13 @@ print_help()
     if echo "${line}" | egrep -q "^\##.*$";
     then
       line_text=$(echo "$line" | sed -r 's/^## (.*)$/\1/')
-      echo "${BOLD_GREEN}$line_text"
+      echo -e "${BOLD_GREEN}$line_text"
     elif echo "${line}" | egrep -q "^\#.*$";
     then
       line_text=$(echo "$line" | sed -r 's/^# (.*)$/\1/')
-      echo "${BOLD_TEAL}$line_text"
+      echo -e "${BOLD_TEAL}$line_text"
     else
-      echo "${NO_COLOR}$line"
+      echo -e "${NO_COLOR}$line"
     fi
   done < "$input"
 }

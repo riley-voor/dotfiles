@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 export RV_UTILS_PATH=$(dirname "$(readlink -f $0)")
 . $RV_UTILS_PATH/scripts/common/print_help.sh
 . $RV_UTILS_PATH/scripts/common/utils.sh

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # This file contains common utility functions for the rest of the scripts.
 
@@ -12,17 +12,17 @@ NO_UNDERLINE="$(tput rmul)"
 
 echo_command()
 {
-  echo "${BOLD_GREEN}$1${NO_COLOR}"
+  echo -e "${BOLD_GREEN}$1${NO_COLOR}"
 }
 
 echo_error()
 {
-  echo "${BOLD_RED}$1${NO_COLOR}"
+  echo -e "${BOLD_RED}$1${NO_COLOR}"
 }
 
 echo_warning()
 {
-  echo "${BOLD_YELLOW}$1${NO_COLOR}"
+  echo -e "${BOLD_YELLOW}$1${NO_COLOR}"
 }
 
 # USAGE:
@@ -37,7 +37,7 @@ prompt_user_yes_no()
   while [ 1 ];
   do
     # Have to echo the output into the read command in order to get the read command to have coloring the way I want it to.
-    read -p "$(echo "${BOLD_YELLOW}${UNDERLINE}$1 [y/n]:${NO_UNDERLINE}${NO_COLOR} ")" REPLY;
+    read -p "$(echo -e "${BOLD_YELLOW}${UNDERLINE}$1 [y/n]:${NO_UNDERLINE}${NO_COLOR} ")" REPLY;
     echo;
 
     # Make sure that the user's input was a number and also corresponded to a file that we can open.
@@ -70,12 +70,12 @@ prompt_user_yes_no()
 prompt_user_input()
 {
   # Have to echo the output into the read command in order to get the read command to have coloring the way I want it to.
-  read -p "$(echo "${BOLD_YELLOW}${UNDERLINE}$1:${NO_UNDERLINE}${NO_COLOR} ")" REPLY;
+  read -p "$(echo -e "${BOLD_YELLOW}${UNDERLINE}$1:${NO_UNDERLINE}${NO_COLOR} ")" REPLY;
   echo;
 }
 
 print_logo() {
-  echo "
+  echo -e "
   ╔══════════════════════════════════════════════════════════════════╗
   ║ ${BOLD_GREEN}☻${NO_COLOR} ${BOLD_YELLOW}☻${NO_COLOR} ${BOLD_RED}☻${NO_COLOR}                     Riley Utils                            ║
   ╠══════════════════════════════════════════════════════════════════╣

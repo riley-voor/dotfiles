@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # LIST OF AVAILABLE ENVIRONMENT VARIABLES:
 # EMAIL_ADDRESS

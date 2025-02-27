@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Setup a work space called `coding` with one window.
 # The window has 3 panes.
