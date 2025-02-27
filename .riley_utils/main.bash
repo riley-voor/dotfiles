@@ -18,8 +18,8 @@ shift
 # same index in their respective arrays, that's how we associate them.
 COMMANDS=(
   # Git commands
-  "new-branch"
   "branch"
+  "new-branch"
   "clean-branches"
   "update-repo"
   "fast-forward"
@@ -37,8 +37,8 @@ COMMANDS=(
 
 SCRIPTS=(
   # Git commands
-  "create_new_clean_branch.bash"
   "change_to_branch.bash"
+  "create_new_clean_branch.bash"
   "clean_up_orphaned_local_git_branches.bash"
   "update_repo.bash"
   "update_current_branch.bash"
@@ -67,8 +67,9 @@ SCRIPT_NAME=${SCRIPTS[COMMAND_INDEX]}
 
 
 if [[ ! $FOUND ]]; then
-  echo_error "Couldn't find script $COMMAND"
-  print_help "usage-quick"
+  echo_error "Command \"$COMMAND\" is not available"
+  echo
+  print_help "general"
   exit 1
 fi
 

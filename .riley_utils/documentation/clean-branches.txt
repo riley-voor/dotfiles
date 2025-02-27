@@ -1,4 +1,4 @@
-# fw clean
-Usage: fw clean
+# rv clean-branches
+Usage: rv clean-branches
 
 Clean up orphaned local git branches. Asks for confirmation before deleting.

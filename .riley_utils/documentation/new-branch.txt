@@ -4,4 +4,4 @@ Usage: rv new-branch <branchname>
 Creates a new feature branch, based on the lastest version of master.
 Equivalent to `rv branch --new <branchname>`
 
-See also: `fw branch --help`
+See also: `rv branch --help`

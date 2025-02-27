@@ -17,5 +17,4 @@
   config                    Update your personal details for this tool
 
 ## Usage
-rv <command> [<args>] [--help]
-
+  rv <command> [<args>] [--help]

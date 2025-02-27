@@ -19,7 +19,7 @@ FORCE_EXISTING=0
 long_options=help,new,existing
 short_options=hne
 # Parse the arguments using the getopt command.
-VALID_ARGS=$( $GETOPT_DIRECTORY -n 'fw' -o $short_options -l $long_options -- "$@" )
+VALID_ARGS=$( $GETOPT_DIRECTORY -n 'rv' -o $short_options -l $long_options -- "$@" )
 
 # Check for errors.
 if [ $? -ne 0 ]; then
@@ -88,7 +88,7 @@ then
     git checkout $NEW_BRANCH_NAME
   else
     echo_error "Branch $NEW_BRANCH_NAME exists. Aborting."
-    echo "If you wanted to switch to that branch, try running \`fw branch\` without the --new flag"
+    echo "If you wanted to switch to that branch, try running \`rv branch\` without the --new flag"
     exit 1
   fi
 else
@@ -96,7 +96,7 @@ else
     new_branch $NEW_BRANCH_NAME
   else
     echo_error "Branch $NEW_BRANCH_NAME not found. Aborting."
-    echo "If you wanted to create that branch, try running \`fw branch\` without the --existing flag"
+    echo "If you wanted to create that branch, try running \`rv branch\` without the --existing flag"
     exit 1
 
   fi
